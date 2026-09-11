@@ -361,7 +361,7 @@ git commit -m "feat(workspace): restore synchronized screen state"
 
 ## UWS-006: Prove cross-device workspace restoration and regressions
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P1
 **Depends on:** UWS-005
 
