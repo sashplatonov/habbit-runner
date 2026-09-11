@@ -313,7 +313,7 @@ class AuthPersistenceCoverageTest extends AuthenticatedApiTestSupport {
 
   @Test
   void shouldPersistSelectedHabitCleanupOnceAfterHabitDeletion() throws Exception {
-    var habitId = UUID.randomUUID().toString();
+    var habitId = "read-for-ten-minutes-ab12";
     var userId = inTransaction(() -> {
       var user = new UserEntity();
       user.setEmail(UUID.randomUUID() + "@example.test");

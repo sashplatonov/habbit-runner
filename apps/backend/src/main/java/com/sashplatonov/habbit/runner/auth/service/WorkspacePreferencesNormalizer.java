@@ -5,7 +5,6 @@ import com.sashplatonov.habbit.runner.auth.dto.ThemeUsage;
 import com.sashplatonov.habbit.runner.auth.dto.UserWorkspacePreferences;
 import com.sashplatonov.habbit.runner.auth.dto.WorkspaceNavigation;
 import java.util.ArrayList;
-import java.util.UUID;
 
 public final class WorkspacePreferencesNormalizer {
   private static final int MAX_SEARCH_LENGTH = 200;
@@ -28,7 +27,7 @@ public final class WorkspacePreferencesNormalizer {
     }
     var navigation = source.navigation();
     if (navigation.screen().name().equals("HABIT_DETAIL")
-        && (navigation.selectedHabitId() == null || !isUuid(navigation.selectedHabitId()))) {
+        && (navigation.selectedHabitId() == null || navigation.selectedHabitId().isBlank())) {
       navigation = new WorkspaceNavigation();
     } else if (!navigation.screen().name().equals("HABIT_DETAIL")) {
       navigation = new WorkspaceNavigation(navigation.screen(), null);
@@ -54,12 +53,4 @@ public final class WorkspacePreferencesNormalizer {
     return new UserWorkspacePreferences();
   }
 
-  private static boolean isUuid(String value) {
-    try {
-      UUID.fromString(value);
-      return true;
-    } catch (IllegalArgumentException exception) {
-      return false;
-    }
-  }
 }

@@ -61,10 +61,12 @@
   let detailParticleCounter = 0;
   let celebrationTimerIds: ReturnType<typeof setTimeout>[] = [];
 
-  const isResolvingHabit = $derived(!habit && !$habitsStore.hasHydrated);
+  const isResolvingHabit = $derived(
+    !habit && (!$habitsStore.hasHydrated || $habitsStore.isHydrating)
+  );
 
   $effect(() => {
-    if (!$themeStore.serverSyncReady || !$habitsStore.hasHydrated) {
+    if (!$themeStore.serverSyncReady || isResolvingHabit) {
       return;
     }
     if (habit && !navigationRecorded) {
