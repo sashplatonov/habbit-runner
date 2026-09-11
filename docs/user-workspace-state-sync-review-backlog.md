@@ -256,7 +256,7 @@ git commit -m "fix(preferences): persist deleted habit cleanup"
 
 ## UWS-RVW-005: Record the completed remediation handoff accurately
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P3
 **Depends on:** UWS-RVW-001, UWS-RVW-002, UWS-RVW-003, UWS-RVW-004
 
