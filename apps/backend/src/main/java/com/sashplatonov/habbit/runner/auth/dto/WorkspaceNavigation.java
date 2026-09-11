@@ -1,8 +1,5 @@
 package com.sashplatonov.habbit.runner.auth.dto;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
-@JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkspaceNavigation(WorkspaceScreen screen, String selectedHabitId) {
   public WorkspaceNavigation {
     screen = screen == null ? WorkspaceScreen.DASHBOARD : screen;

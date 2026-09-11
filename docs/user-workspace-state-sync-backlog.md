@@ -153,7 +153,7 @@ git commit -m "feat(preferences): add workspace storage revision"
 
 ## UWS-003: Serve and update canonical workspace preferences safely
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P1
 **Depends on:** UWS-001, UWS-002
 

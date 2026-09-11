@@ -3,6 +3,7 @@ package com.sashplatonov.habbit.runner.auth.resource;
 import com.sashplatonov.habbit.runner.auth.security.CurrentUserContext;
 import com.sashplatonov.habbit.runner.auth.security.RequireAuth;
 import com.sashplatonov.habbit.runner.auth.service.PreferencesService;
+import com.sashplatonov.habbit.runner.auth.service.WorkspacePreferencesConflictException;
 import com.sashplatonov.habbit.runner.api.ErrorResponse;
 import com.sashplatonov.habbit.runner.auth.dto.UpdatePreferencesRequest;
 import com.sashplatonov.habbit.runner.auth.dto.UserPreferencesResponse;
@@ -41,7 +42,9 @@ public class AuthPreferencesResource {
       @APIResponse(responseCode = "200", description = "User preferences",
           content = @Content(schema = @Schema(implementation = UserPreferencesResponse.class))),
       @APIResponse(responseCode = "403", description = "Authentication required",
-          content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+          content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+      @APIResponse(responseCode = "409", description = "Workspace revision conflict",
+          content = @Content(schema = @Schema(implementation = UserPreferencesResponse.class)))
   })
   public Response getPreferences() {
     return Response.ok(preferencesService.getUserPreferences(currentUserContext.requireUser().id())).build();
@@ -60,8 +63,12 @@ public class AuthPreferencesResource {
           content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
   })
   public Response updatePreferences(@Valid @NotNull UpdatePreferencesRequest request) {
-    var updated = preferencesService.updateUserPreferences(
-        currentUserContext.requireUser().id(), request);
-    return Response.ok(updated).build();
+    try {
+      var updated = preferencesService.updateUserPreferences(
+          currentUserContext.requireUser().id(), request);
+      return Response.ok(updated).build();
+    } catch (WorkspacePreferencesConflictException conflict) {
+      return Response.status(Response.Status.CONFLICT).entity(conflict.current()).header("X-Error-Code", "PREFERENCES_CONFLICT").build();
+    }
   }
 }

@@ -6,6 +6,8 @@ import com.sashplatonov.habbit.runner.auth.service.UserService;
 import com.sashplatonov.habbit.runner.auth.support.RefreshTokenDigest;
 import com.sashplatonov.habbit.runner.auth.dto.DashboardPreferences;
 import com.sashplatonov.habbit.runner.auth.dto.UpdatePreferencesRequest;
+import com.sashplatonov.habbit.runner.auth.dto.UserWorkspacePreferences;
+import com.sashplatonov.habbit.runner.auth.service.WorkspacePreferencesConflictException;
 import com.sashplatonov.habbit.runner.model.RefreshTokenEntity;
 import com.sashplatonov.habbit.runner.model.UserEntity;
 import com.sashplatonov.habbit.runner.support.AuthenticatedApiTestSupport;
@@ -248,5 +250,26 @@ class AuthPersistenceCoverageTest extends AuthenticatedApiTestSupport {
     assertEquals("compact", updated.dashboard().density());
     assertEquals(Map.of("cloud", 4), updated.dashboard().themeUsage());
     assertEquals(updated.dashboard(), legacyUpdated.dashboard());
+  }
+
+  @Test
+  void shouldIncrementWorkspaceRevisionAndRejectStaleCanonicalUpdate() throws Exception {
+    var user = inTransaction(() -> {
+      var entity = new UserEntity();
+      entity.setEmail(UUID.randomUUID() + "@example.test");
+      entity.setTheme("cloud");
+      entity.persist();
+      return entity;
+    });
+
+    var current = inTransaction(() -> preferencesService.getUserPreferences(user.getId()));
+    var updated = inTransaction(() -> preferencesService.updateUserPreferences(user.getId(),
+        new UpdatePreferencesRequest("matrix", null, null, new UserWorkspacePreferences(), current.revision())));
+
+    assertEquals(current.revision() + 1, updated.revision());
+    assertThrows(WorkspacePreferencesConflictException.class, () -> inTransaction(
+        () -> preferencesService.updateUserPreferences(user.getId(),
+            new UpdatePreferencesRequest("sakura", null, null, new UserWorkspacePreferences(), current.revision()))));
+    assertEquals("matrix", inTransaction(() -> UserEntity.<UserEntity>findById(user.getId())).getTheme());
   }
 }
