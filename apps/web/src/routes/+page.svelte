@@ -6,6 +6,8 @@
   import PublicLanding from '$lib/components/PublicLanding.svelte';
   import TelegramRootEntry from '$lib/components/TelegramRootEntry.svelte';
   import { loadTelegramWebApp } from '$lib/telegram/webApp';
+  import { themeStore } from '$lib/stores/theme';
+  import { get } from 'svelte/store';
 
   let redirecting = $state(false);
   let telegramEntry = $state(false);
@@ -22,13 +24,26 @@
       .some((key) => search.has(key) || hash.has(key));
   }
 
+  async function redirectAuthenticatedUser(): Promise<void> {
+    await themeStore.setAuthenticated(true);
+    const navigation = get(themeStore).workspace.navigation;
+    const destination = navigation.screen === 'progress'
+      ? resolve<'/app/(protected)/stats'>('/app/(protected)/stats', {})
+      : navigation.screen === 'account'
+        ? resolve<'/app/(protected)/account'>('/app/(protected)/account', {})
+        : navigation.screen === 'habit-detail' && navigation.selectedHabitId
+          ? resolve('/app/(protected)/habit/[id]', { id: navigation.selectedHabitId })
+          : resolve<'/app/(protected)/dashboard'>('/app/(protected)/dashboard', {});
+    redirecting = true;
+    await goto(destination, { replaceState: true });
+  }
+
   onMount(() => {
     void (async () => {
       const telegramLaunch = isTelegramContainer() || hasTelegramLaunchIntent();
       if (!telegramLaunch) {
         if (readAuthSession()) {
-          redirecting = true;
-          await goto(resolve<'/app/(protected)/dashboard'>('/app/(protected)/dashboard', {}), { replaceState: true });
+          await redirectAuthenticatedUser();
         }
         return;
       }
@@ -37,13 +52,11 @@
         const telegram = await loadTelegramWebApp();
         telegramEntry = telegramLaunch || Boolean(telegram?.initData);
         if (!telegramEntry && readAuthSession()) {
-          redirecting = true;
-          await goto(resolve<'/app/(protected)/dashboard'>('/app/(protected)/dashboard', {}), { replaceState: true });
+          await redirectAuthenticatedUser();
         }
       } catch {
         if (readAuthSession()) {
-          redirecting = true;
-          await goto(resolve<'/app/(protected)/dashboard'>('/app/(protected)/dashboard', {}), { replaceState: true });
+          await redirectAuthenticatedUser();
         }
       }
     })();

@@ -4,12 +4,12 @@ import { replaceState } from '$app/navigation';
 import { resolve } from '$app/paths';
 import type { PathnameWithSearchOrHash } from '$app/types';
 
-type DashboardUrlState = {
-  filter?: string;
+export type DashboardUrlState = {
+  filter?: 'pending' | 'all' | 'done' | 'archived';
   search?: string;
   tags?: string;
-  sort?: string;
-  density?: string;
+  sort?: 'custom' | 'smart';
+  density?: 'comfortable' | 'compact';
   collapsed?: string;
 };
 
@@ -19,11 +19,16 @@ export function readDashboardStateFromURL(): Partial<DashboardUrlState> {
   const params = new URLSearchParams(window.location.search);
   const state: Partial<DashboardUrlState> = {};
 
-  if (params.has('filter')) { state.filter = params.get('filter') ?? undefined; }
-  if (params.has('search')) { state.search = params.get('search') ?? undefined; }
-  if (params.has('tags')) { state.tags = params.get('tags') ?? undefined; }
-  if (params.has('sort')) { state.sort = params.get('sort') ?? undefined; }
-  if (params.has('density')) { state.density = params.get('density') ?? undefined; }
+  const filter = params.get('filter');
+  if (filter === 'pending' || filter === 'all' || filter === 'done' || filter === 'archived') { state.filter = filter; }
+  const search = params.get('search');
+  if (search !== null && search.trim().length <= 200) { state.search = search.trim(); }
+  const tags = parseTagsFromURL(params.get('tags') ?? undefined);
+  if (tags.length > 0) { state.tags = stringifyTagsForURL(tags); }
+  const sort = params.get('sort');
+  if (sort === 'custom' || sort === 'smart') { state.sort = sort; }
+  const density = params.get('density');
+  if (density === 'comfortable' || density === 'compact') { state.density = density; }
   if (params.has('collapsed')) { state.collapsed = params.get('collapsed') ?? undefined; }
 
   return state;
@@ -94,7 +99,9 @@ export function updateDashboardURL(state: Partial<DashboardUrlState>) {
 
 export function parseTagsFromURL(tagsParam: string | undefined): string[] {
   if (!tagsParam) {return [];}
-  return tagsParam.split(',').map(t => t.trim()).filter(Boolean);
+  return tagsParam.split(',').map(t => t.trim())
+    .filter((tag, index, tags) => tag.length > 0 && tag.length <= 40 && tags.indexOf(tag) === index)
+    .slice(0, 50);
 }
 
 export function stringifyTagsForURL(tags: string[]): string {

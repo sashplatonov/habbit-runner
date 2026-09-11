@@ -10,6 +10,7 @@
   import Surface from '$lib/components/ui/Surface.svelte';
   import { getAppRuntime } from '$lib/app/runtime';
   import { buildModernStatsSnapshot, type StatsWindowId } from '$lib/stats/modernStats';
+  import { themeStore } from '$lib/stores/theme';
 
   const runtime = getAppRuntime();
   const habitsStore = runtime.habitsStore;
@@ -22,6 +23,14 @@
   ] as const;
 
   let windowId = $state<StatsWindowId>('1w');
+  let restoredPeriod = $state(false);
+
+  $effect(() => {
+    if ($themeStore.serverSyncReady && !restoredPeriod) {
+      windowId = $themeStore.workspace.progress.period;
+      restoredPeriod = true;
+    }
+  });
 
   const activeHabits = $derived($habitsStore.allHabits.filter((habit) => !habit.archived));
   const snapshot = $derived.by(() => buildModernStatsSnapshot(activeHabits, windowId));
@@ -75,7 +84,10 @@
           value={windowId}
           ariaLabel="Progress period"
           class="w-full justify-between"
-          onChange={(next) => { windowId = next as StatsWindowId; }}
+          onChange={(next) => {
+            windowId = next as StatsWindowId;
+            void themeStore.setProgressPeriod(windowId);
+          }}
         />
       </header>
 

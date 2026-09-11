@@ -17,6 +17,7 @@
   import PullToRefresh from '$lib/components/PullToRefresh.svelte';
   import { habitsStore } from '$lib/stores/habits';
   import { themeStore } from '$lib/stores/theme';
+  import { get } from 'svelte/store';
   import { createAppRuntime } from '$lib/app/runtime';
   import AppRuntimeProvider from '$lib/app/AppRuntimeProvider.svelte';
 
@@ -36,7 +37,21 @@
     if (browser) {
       document.getElementById('main-content')?.focus();
     }
+    void recordStableNavigation();
   });
+
+  async function recordStableNavigation(pathname = window.location.pathname): Promise<void> {
+    if (!get(themeStore).serverSyncReady) {
+      return;
+    }
+    if (pathname.endsWith('/dashboard')) {
+      await themeStore.setNavigation('dashboard');
+    } else if (pathname.endsWith('/stats')) {
+      await themeStore.setNavigation('progress');
+    } else if (pathname.endsWith('/account')) {
+      await themeStore.setNavigation('account');
+    }
+  }
 
   async function handleSessionCleared() {
     if (sessionClearInFlight) {
@@ -76,7 +91,10 @@
     void habitsStore.setUserId(data.authSession.userId).finally(() => {
       isRefreshing = false;
     });
-    void themeStore.setAuthenticated(true);
+    void (async () => {
+      await themeStore.setAuthenticated(true);
+      await recordStableNavigation();
+    })();
 
     const onSessionCleared = () => {
       void handleSessionCleared();

@@ -6,7 +6,10 @@ import {
   type DashboardPreferences,
   type ThemeId as SharedThemeId,
   type UserPreferences,
-  type UserWorkspacePreferences
+  type UserWorkspacePreferences,
+  type ProgressPeriod,
+  type WorkspaceDashboardPreferences,
+  type WorkspaceScreen
 } from '@habbit-runner/shared';
 import * as preferencesApi from '$lib/api/theme';
 import type { SaveUserPreferencesRequest } from '$lib/api/theme';
@@ -43,6 +46,9 @@ export interface ThemeStore extends Readable<ThemeStoreSnapshot> {
   setTheme: (theme: ThemeId) => Promise<void>;
   setTimezone: (timezone: string) => Promise<void>;
   setDashboardPreferences: (preferences: DashboardPreferences) => Promise<void>;
+  setDashboardWorkspace: (dashboard: WorkspaceDashboardPreferences) => Promise<void>;
+  setProgressPeriod: (period: ProgressPeriod) => Promise<void>;
+  setNavigation: (screen: WorkspaceScreen, selectedHabitId?: string | null) => Promise<void>;
   recordThemeSelection: (themeId: ThemeId) => Promise<void>;
   setAuthenticated: (isAuthenticated: boolean) => Promise<void>;
 }
@@ -172,6 +178,21 @@ export function createThemeStore(): ThemeStore {
     async setDashboardPreferences(preferences) {
       await mutate({ kind: 'dashboard', value: preferences });
     },
+    async setDashboardWorkspace(dashboard) {
+      const current = get(store);
+      await mutate({ kind: 'workspace', value: { ...current.workspace, dashboard } });
+    },
+    async setProgressPeriod(period) {
+      const current = get(store);
+      await mutate({ kind: 'workspace', value: { ...current.workspace, progress: { period } } });
+    },
+    async setNavigation(screen, selectedHabitId = null) {
+      const current = get(store);
+      await mutate({ kind: 'workspace', value: {
+        ...current.workspace,
+        navigation: { screen, selectedHabitId: screen === 'habit-detail' ? selectedHabitId : null }
+      } });
+    },
     async recordThemeSelection(theme) {
       const current = get(store);
       const usage = usageRecord(current.workspace);
@@ -184,6 +205,9 @@ export function createThemeStore(): ThemeStore {
         store.set(snapshot({ theme: DEFAULT_THEME_ID, timezone: getBrowserTimeZone(),
           workspace: DEFAULT_WORKSPACE_PREFERENCES, revision: 0, serverSyncReady: false, isAuthenticated: false }));
         applyTheme(DEFAULT_THEME_ID);
+        return;
+      }
+      if (get(store).isAuthenticated && get(store).serverSyncReady) {
         return;
       }
       store.update((current) => ({ ...current, isAuthenticated: true, serverSyncReady: false, syncError: null }));

@@ -24,6 +24,7 @@
   import { getUndoContext } from '$lib/stores/undo';
   import { getCurrentUserTimeZone } from '$lib/time/userTimezone';
   import { HABIT_COLOR_THEMES } from '$lib/theme/habit-colors';
+  import { themeStore } from '$lib/stores/theme';
 
   const runtime = getAppRuntime();
   const habitsStore = runtime.habitsStore;
@@ -37,6 +38,8 @@
   let confirmDelete = $state(false);
   let mutationPending = $state(false);
   let mutationError = $state<string | null>(null);
+  let navigationFallbackStarted = $state(false);
+  let navigationRecorded = $state(false);
 
   const todayKey = $derived($habitsStore.formatDate(referenceDate));
   const todayFreezeKey = $derived(completionKeyToCalendarDate(todayKey));
@@ -59,6 +62,20 @@
   let celebrationTimerIds: ReturnType<typeof setTimeout>[] = [];
 
   const isResolvingHabit = $derived(!habit && !$habitsStore.hasHydrated);
+
+  $effect(() => {
+    if (!$themeStore.serverSyncReady || !$habitsStore.hasHydrated) {
+      return;
+    }
+    if (habit && !navigationRecorded) {
+      navigationRecorded = true;
+      void themeStore.setNavigation('habit-detail', habit.id);
+    } else if (!navigationFallbackStarted) {
+      navigationFallbackStarted = true;
+      void themeStore.setNavigation('dashboard');
+      void goto(resolve(appResolve('/app/(protected)/dashboard', {}), {}), { replaceState: true });
+    }
+  });
 
   function prefersReducedMotion(): boolean {
     return typeof window !== 'undefined'

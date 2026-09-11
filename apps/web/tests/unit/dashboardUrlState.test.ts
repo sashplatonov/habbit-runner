@@ -5,7 +5,7 @@ const { mockReplaceState } = vi.hoisted(() => ({ mockReplaceState: vi.fn() }));
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$app/navigation', () => ({ replaceState: mockReplaceState }));
 
-import { updateDashboardURL } from '$lib/dashboard/urlState';
+import { readDashboardStateFromURL, updateDashboardURL } from '$lib/dashboard/urlState';
 
 describe('dashboard URL state', () => {
   beforeEach(() => {
@@ -23,5 +23,19 @@ describe('dashboard URL state', () => {
     updateDashboardURL({ filter: undefined });
 
     expect(mockReplaceState).toHaveBeenCalledWith('/showcase?tags=focus', {});
+  });
+
+  it('accepts only supported values and bounds URL-provided dashboard state', () => {
+    const tags = Array.from({ length: 52 }, (_, index) => `tag-${index}`).join(',');
+    window.history.replaceState(
+      {},
+      '',
+      `/showcase?filter=unknown&search=${'x'.repeat(201)}&tags=${tags}&sort=bad&density=compact`
+    );
+
+    expect(readDashboardStateFromURL()).toEqual({
+      tags: Array.from({ length: 50 }, (_, index) => `tag-${index}`).join(','),
+      density: 'compact'
+    });
   });
 });

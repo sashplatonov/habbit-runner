@@ -38,6 +38,7 @@
   import { buildCelebrationParticles, getCelebrationLabel, type CelebrationParticle } from '$lib/habits/completionCelebration';
   import { formatDate } from '$lib/habits/habitStats';
   import { getAppRuntime } from '$lib/app/runtime';
+  import { themeStore } from '$lib/stores/theme';
   import type { HabitsStore } from '$lib/stores/habits';
   import { getCurrentUserTimeZone } from '$lib/time/userTimezone';
   import { buildScheduledCompletionSummary } from '$lib/dashboard/scheduledCompletionSummary';
@@ -56,41 +57,19 @@
   type DropHint = { habitId: string; position: 'above' | 'below' };
   type SwipeDirection = 'left' | 'right' | null;
 
-  // ─── LocalStorage helpers ─────────────────────────────────────────────────────
-  const LS_FILTER    = 'hr_dashboard_filter_v1';
-  const LS_DENSITY   = 'hr_dashboard_density_v1';
-  const LS_SORT      = 'hr_dashboard_sort_mode_v1';
-  const LS_TAGS      = 'hr_dashboard_tags_v1';
-
-  let isDemoSurface = false;
-
-  function lsGet<T>(key: string, fallback: T): T {
-    if (typeof localStorage === 'undefined') { return fallback; }
-    try {
-      const v = localStorage.getItem(key);
-      return v !== null ? (JSON.parse(v) as T) : fallback;
-    } catch { return fallback; }
-  }
-
-  function lsSet(key: string, value: unknown) {
-    // The anonymous demo keeps every preference in memory; nothing lands in storage.
-    if (isDemoSurface || typeof localStorage === 'undefined') { return; }
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
-  }
-
   // ─── State ────────────────────────────────────────────────────────────────────
   const runtime = getAppRuntime();
   const habitsStore = runtime.habitsStore as unknown as HabitsStore;
-  isDemoSurface = runtime.isDemo;
 
   let addingTemplate   = $state<string | null>(null);
-  // Initialize from URL first, then localStorage as fallback
+  // Initialize from the URL only until the authenticated workspace has hydrated.
   const urlState = readDashboardStateFromURL();
-  let filter           = $state<DashboardFilter>((urlState.filter as DashboardFilter) ?? lsGet<DashboardFilter>(LS_FILTER, 'pending'));
+  let filter           = $state<DashboardFilter>(urlState.filter ?? 'pending');
   let searchQuery      = $state(urlState.search ?? '');
-  let sortMode         = $state<SortMode>((urlState.sort as SortMode) ?? lsGet<SortMode>(LS_SORT, 'custom'));
-  let viewDensity      = $state<ViewDensity>((urlState.density as ViewDensity) ?? lsGet<ViewDensity>(LS_DENSITY, 'comfortable'));
-  let selectedTags     = $state<string[]>(urlState.tags ? urlState.tags.split(',').map(t => t.trim()).filter(Boolean) : lsGet<string[]>(LS_TAGS, []));
+  let sortMode         = $state<SortMode>(urlState.sort ?? 'custom');
+  let viewDensity      = $state<ViewDensity>(urlState.density ?? 'comfortable');
+  let selectedTags     = $state<string[]>(urlState.tags ? urlState.tags.split(',') : []);
+  let restoredFromWorkspace = $state(runtime.isDemo);
   let shouldAnimateListEntrance = $state(true);
 
   let animatingHabitId = $state<string | null>(null);
@@ -115,14 +94,23 @@
   let touchDragOriginY = 0;
   let touchDragOriginTop = 0;
 
-  // ─── Persist to localStorage ─────────────────────────────────────────────────
-  $effect(() => { lsSet(LS_FILTER, filter); });
-  $effect(() => { lsSet(LS_SORT, sortMode); });
-  $effect(() => { lsSet(LS_DENSITY, viewDensity); });
-  $effect(() => { lsSet(LS_TAGS, selectedTags); });
+  $effect(() => {
+    if (!$themeStore.serverSyncReady || restoredFromWorkspace) { return; }
+    const workspace = $themeStore.workspace.dashboard;
+    filter = urlState.filter ?? workspace.filter;
+    searchQuery = urlState.search ?? workspace.searchQuery;
+    sortMode = urlState.sort ?? workspace.sort;
+    viewDensity = urlState.density ?? workspace.density;
+    selectedTags = urlState.tags ? urlState.tags.split(',') : [...workspace.tags];
+    restoredFromWorkspace = true;
+    if (urlState.filter || urlState.search || urlState.tags || urlState.sort || urlState.density) {
+      void themeStore.setDashboardWorkspace({ ...workspace, filter, searchQuery, tags: selectedTags, sort: sortMode, density: viewDensity });
+    }
+  });
 
   // ─── Sync to URL ────────────────────────────────────────────────────
   $effect(() => {
+    if (!restoredFromWorkspace) { return; }
     updateDashboardURL({
       filter: filter === 'pending' ? undefined : filter,
       search: searchQuery || undefined,
@@ -642,24 +630,31 @@
           // the staggered entrance animation for newly visible cards.
           shouldAnimateListEntrance = false;
           filter = nextFilter;
+          void themeStore.setDashboardWorkspace({ ...$themeStore.workspace.dashboard, filter: nextFilter });
         }}
         onSearchChange={(nextQuery) => {
           searchQuery = nextQuery;
+          void themeStore.setDashboardWorkspace({ ...$themeStore.workspace.dashboard, searchQuery: nextQuery });
         }}
         onClearSearch={() => {
           searchQuery = '';
+          void themeStore.setDashboardWorkspace({ ...$themeStore.workspace.dashboard, searchQuery: '' });
         }}
         onSortChange={(nextSortMode) => {
           sortMode = nextSortMode;
+          void themeStore.setDashboardWorkspace({ ...$themeStore.workspace.dashboard, sort: nextSortMode });
         }}
         onDensityChange={(nextDensity) => {
           viewDensity = nextDensity;
+          void themeStore.setDashboardWorkspace({ ...$themeStore.workspace.dashboard, density: nextDensity });
         }}
         onToggleTag={(tag) => {
           toggleTag(tag);
+          void themeStore.setDashboardWorkspace({ ...$themeStore.workspace.dashboard, tags: selectedTags });
         }}
         onClearTags={() => {
           selectedTags = [];
+          void themeStore.setDashboardWorkspace({ ...$themeStore.workspace.dashboard, tags: [] });
         }}
         onAddHabit={navigateToNewHabit}
       />

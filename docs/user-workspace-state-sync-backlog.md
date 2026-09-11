@@ -292,7 +292,7 @@ git commit -m "feat(web): synchronize workspace preferences store"
 
 ## UWS-005: Restore navigation and screen selections from the workspace profile
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P1
 **Depends on:** UWS-004
 
