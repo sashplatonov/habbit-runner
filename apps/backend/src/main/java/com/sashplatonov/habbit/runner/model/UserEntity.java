@@ -26,10 +26,22 @@ public class UserEntity extends UuidAuditedEntityBase {
   @Column(name = "dashboardPreferences", nullable = false)
   private String dashboardPreferences = "{}";
 
+  @Column(name = "workspacePreferences", nullable = false)
+  private String workspacePreferences = "{}";
+
+  @Column(name = "workspacePreferencesRevision", nullable = false)
+  private Long workspacePreferencesRevision = 0L;
+
   @PrePersist
   void prePersist() {
     if (getTheme() == null || getTheme().isBlank()) {
       setTheme("cloud");
+    }
+    if (getWorkspacePreferences() == null) {
+      setWorkspacePreferences("{}");
+    }
+    if (getWorkspacePreferencesRevision() == null) {
+      setWorkspacePreferencesRevision(0L);
     }
   }
 

@@ -2,6 +2,7 @@ package com.sashplatonov.habbit.runner.integration;
 
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import jakarta.transaction.Transactional;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import org.flywaydb.core.Flyway;
@@ -57,6 +58,61 @@ class FlywayMigrationIT {
     assertEquals("text", dashboardPreferencesType);
     assertTrue(tableExists("habit_schedule_weekdays"));
     assertTrue(constraintExists("habits_description_length"));
+  }
+
+  @Test
+  @Transactional
+  void shouldAddWorkspaceStorageWithDefaultsAndKeepLegacyPreferences() {
+    var workspacePreferencesType = columnDataType("workspacePreferences");
+    var workspacePreferencesRevisionType = columnDataType("workspacePreferencesRevision");
+    var workspacePreferencesNullable = columnNullable("workspacePreferences");
+    var workspacePreferencesRevisionNullable = columnNullable("workspacePreferencesRevision");
+    var workspacePreferencesDefault = columnDefault("workspacePreferences");
+    var workspacePreferencesRevisionDefault = columnDefault("workspacePreferencesRevision");
+    var legacyPreferences = "{\"filter\":\"completed\"}";
+
+    entityManager.createNativeQuery(
+        "INSERT INTO users (id, email, theme, \"dashboardPreferences\") "
+            + "VALUES (?1, ?2, ?3, ?4)"
+    )
+        .setParameter(1, "uws-002-legacy-user")
+        .setParameter(2, "uws-002-legacy@example.com")
+        .setParameter(3, "cloud")
+        .setParameter(4, legacyPreferences)
+        .executeUpdate();
+
+    var storedLegacyPreferences = entityManager.createNativeQuery(
+        "SELECT \"dashboardPreferences\" FROM users WHERE id = ?1"
+    ).setParameter(1, "uws-002-legacy-user").getSingleResult();
+
+    assertEquals("text", workspacePreferencesType);
+    assertEquals("bigint", workspacePreferencesRevisionType);
+    assertEquals("NO", workspacePreferencesNullable);
+    assertEquals("NO", workspacePreferencesRevisionNullable);
+    assertTrue(workspacePreferencesDefault.contains("{}"));
+    assertEquals("0", workspacePreferencesRevisionDefault);
+    assertEquals(legacyPreferences, storedLegacyPreferences);
+  }
+
+  private String columnDataType(String columnName) {
+    return (String) entityManager.createNativeQuery(
+        "SELECT data_type FROM information_schema.columns "
+            + "WHERE table_schema = 'public' AND table_name = 'users' AND column_name = ?1"
+    ).setParameter(1, columnName).getSingleResult();
+  }
+
+  private String columnNullable(String columnName) {
+    return (String) entityManager.createNativeQuery(
+        "SELECT is_nullable FROM information_schema.columns "
+            + "WHERE table_schema = 'public' AND table_name = 'users' AND column_name = ?1"
+    ).setParameter(1, columnName).getSingleResult();
+  }
+
+  private String columnDefault(String columnName) {
+    return (String) entityManager.createNativeQuery(
+        "SELECT column_default FROM information_schema.columns "
+            + "WHERE table_schema = 'public' AND table_name = 'users' AND column_name = ?1"
+    ).setParameter(1, columnName).getSingleResult();
   }
 
   private boolean tableExists(String tableName) {

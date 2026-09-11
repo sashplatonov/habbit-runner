@@ -1,0 +1,5 @@
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS "workspacePreferences" TEXT NOT NULL DEFAULT '{}';
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS "workspacePreferencesRevision" BIGINT NOT NULL DEFAULT 0;

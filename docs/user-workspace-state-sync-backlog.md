@@ -93,7 +93,7 @@ git commit -m "feat(preferences): define typed workspace state"
 
 ## UWS-002: Add canonical workspace storage and revision migration
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P1
 **Depends on:** UWS-001
 
