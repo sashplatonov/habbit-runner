@@ -199,7 +199,7 @@ git commit -m "fix(workspace): expose preference sync recovery"
 
 ## UWS-RVW-004: Persist deleted selected-habit cleanup
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P2
 **Depends on:** UWS-RVW-001
 

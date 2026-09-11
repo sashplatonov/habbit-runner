@@ -5,9 +5,17 @@ import com.sashplatonov.habbit.runner.auth.service.RefreshTokenService;
 import com.sashplatonov.habbit.runner.auth.service.UserService;
 import com.sashplatonov.habbit.runner.auth.support.RefreshTokenDigest;
 import com.sashplatonov.habbit.runner.auth.dto.DashboardPreferences;
+import com.sashplatonov.habbit.runner.auth.dto.DashboardWorkspacePreferences;
+import com.sashplatonov.habbit.runner.auth.dto.ProgressWorkspacePreferences;
 import com.sashplatonov.habbit.runner.auth.dto.UpdatePreferencesRequest;
 import com.sashplatonov.habbit.runner.auth.dto.UserWorkspacePreferences;
+import com.sashplatonov.habbit.runner.auth.dto.WorkspaceNavigation;
+import com.sashplatonov.habbit.runner.auth.dto.WorkspaceScreen;
 import com.sashplatonov.habbit.runner.auth.service.WorkspacePreferencesConflictException;
+import com.sashplatonov.habbit.runner.model.HabitColor;
+import com.sashplatonov.habbit.runner.model.HabitEntity;
+import com.sashplatonov.habbit.runner.model.HabitFrequency;
+import com.sashplatonov.habbit.runner.model.HabitType;
 import com.sashplatonov.habbit.runner.model.RefreshTokenEntity;
 import com.sashplatonov.habbit.runner.model.UserEntity;
 import com.sashplatonov.habbit.runner.support.AuthenticatedApiTestSupport;
@@ -18,11 +26,13 @@ import jakarta.ws.rs.NotAuthorizedException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -299,5 +309,55 @@ class AuthPersistenceCoverageTest extends AuthenticatedApiTestSupport {
     assertEquals("Europe/Berlin", unchanged.timezone());
     assertEquals(current.workspace(), unchanged.workspace());
     assertEquals(current.revision(), unchanged.revision());
+  }
+
+  @Test
+  void shouldPersistSelectedHabitCleanupOnceAfterHabitDeletion() throws Exception {
+    var habitId = UUID.randomUUID().toString();
+    var userId = inTransaction(() -> {
+      var user = new UserEntity();
+      user.setEmail(UUID.randomUUID() + "@example.test");
+      user.setTheme("cloud");
+      user.persist();
+
+      var habit = new HabitEntity();
+      habit.setId(habitId);
+      habit.setUserId(user.getId());
+      habit.setName("Selected habit");
+      habit.setColor(HabitColor.BLUE);
+      habit.setIcon("target");
+      habit.setFrequency(HabitFrequency.DAILY);
+      habit.setDailyTarget(1);
+      habit.setTargetStreak(1);
+      habit.setArchived(false);
+      habit.setType(HabitType.POSITIVE);
+      habit.setSortOrder(BigInteger.ZERO);
+      habit.persist();
+      return user.getId();
+    });
+    var initial = inTransaction(() -> preferencesService.getUserPreferences(userId));
+    var selectedWorkspace = new UserWorkspacePreferences(1, new DashboardWorkspacePreferences(),
+        new ProgressWorkspacePreferences(), new WorkspaceNavigation(WorkspaceScreen.HABIT_DETAIL, habitId), List.of());
+    var selected = inTransaction(() -> preferencesService.updateUserPreferences(userId,
+        new UpdatePreferencesRequest("cloud", null, null, selectedWorkspace, initial.revision())));
+    var foreignWorkspace = new UserWorkspacePreferences(1, new DashboardWorkspacePreferences(),
+        new ProgressWorkspacePreferences(), new WorkspaceNavigation(WorkspaceScreen.HABIT_DETAIL,
+        UUID.randomUUID().toString()), List.of());
+
+    assertEquals(WorkspaceScreen.HABIT_DETAIL, selected.workspace().navigation().screen());
+    assertEquals(habitId, selected.workspace().navigation().selectedHabitId());
+    assertThrows(BadRequestException.class, () -> inTransaction(() -> preferencesService.updateUserPreferences(userId,
+        new UpdatePreferencesRequest("cloud", null, null, foreignWorkspace, selected.revision()))));
+
+    inTransaction(() -> HabitEntity.deleteById(habitId));
+    var cleaned = inTransaction(() -> preferencesService.getUserPreferences(userId));
+    var stored = inTransaction(() -> UserEntity.<UserEntity>findById(userId));
+    var cleanedAgain = inTransaction(() -> preferencesService.getUserPreferences(userId));
+
+    assertEquals(WorkspaceScreen.DASHBOARD, cleaned.workspace().navigation().screen());
+    assertNull(cleaned.workspace().navigation().selectedHabitId());
+    assertEquals(selected.revision() + 1, cleaned.revision());
+    assertFalse(stored.getWorkspacePreferences().contains(habitId));
+    assertEquals(cleaned.revision(), cleanedAgain.revision());
   }
 }

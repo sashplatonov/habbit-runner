@@ -41,7 +41,11 @@ public class PreferencesService {
     if (user == null) {
       throw new NotAuthorizedException("User no longer exists");
     }
-    var workspace = clearMissingSelectedHabit(userId, readOrMigrate(user));
+    var storedWorkspace = readOrMigrate(user);
+    var workspace = clearMissingSelectedHabit(userId, storedWorkspace);
+    if (!Objects.equals(storedWorkspace, workspace)) {
+      persistMigration(user, workspace);
+    }
     return response(user, workspace);
   }
 
