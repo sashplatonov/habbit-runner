@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { saveUserPreferences } from '$lib/api/theme';
+import { DEFAULT_WORKSPACE_PREFERENCES } from '@habbit-runner/shared';
 
 describe('theme preferences API', () => {
   afterEach(() => {
@@ -17,7 +18,9 @@ describe('theme preferences API', () => {
         sort: 'smart',
         density: 'compact',
         themeUsage: {}
-      }
+      },
+      workspace: DEFAULT_WORKSPACE_PREFERENCES,
+      revision: 4
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
 
     const confirmed = await saveUserPreferences({
@@ -30,7 +33,9 @@ describe('theme preferences API', () => {
         sort: 'smart',
         density: 'compact',
         themeUsage: {}
-      }
+      },
+      workspace: DEFAULT_WORKSPACE_PREFERENCES,
+      revision: 3
     });
 
     expect(confirmed.dashboard).toMatchObject({ sort: 'smart', density: 'compact' });

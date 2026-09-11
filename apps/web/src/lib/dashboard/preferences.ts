@@ -1,4 +1,10 @@
-import type { DashboardPreferences } from '@habbit-runner/shared';
+import {
+  normalizeUserWorkspacePreferences,
+  type DashboardPreferences,
+  type ThemeId,
+  type UserWorkspacePreferences,
+  type WorkspaceDashboardPreferences
+} from '@habbit-runner/shared';
 
 export const DEFAULT_DASHBOARD_PREFERENCES: DashboardPreferences = {
   version: 1,
@@ -17,6 +23,17 @@ const LEGACY_KEYS = {
 } as const;
 
 const PENDING_PREFERENCES_PREFIX = 'hr_dashboard_pending_v1:';
+const PENDING_WORKSPACE_PREFIX = 'hr_workspace_pending_v1:';
+
+export type WorkspaceMutation =
+  | { kind: 'theme'; value: ThemeId }
+  | { kind: 'dashboard'; value: DashboardPreferences }
+  | { kind: 'workspace'; value: UserWorkspacePreferences };
+
+export interface PendingWorkspaceMutation {
+  revision: number;
+  mutation: WorkspaceMutation;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -58,6 +75,28 @@ export function normalizeDashboardPreferences(value: unknown): DashboardPreferen
         .filter(([, count]) => Number.isSafeInteger(count) && (count as number) >= 0)
         .map(([theme, count]) => [theme, Math.min(count as number, 1_000_000)])
     )
+  };
+}
+
+export function toWorkspaceDashboard(value: DashboardPreferences): WorkspaceDashboardPreferences {
+  const normalized = normalizeDashboardPreferences(value);
+  return {
+    filter: normalized.filter,
+    searchQuery: '',
+    tags: normalized.tags,
+    sort: normalized.sort,
+    density: normalized.density
+  };
+}
+
+export function fromWorkspaceDashboard(value: WorkspaceDashboardPreferences, themeUsage: Record<string, number>): DashboardPreferences {
+  return {
+    version: 1,
+    filter: value.filter,
+    tags: [...value.tags],
+    sort: value.sort,
+    density: value.density,
+    themeUsage: { ...themeUsage }
   };
 }
 
@@ -115,4 +154,56 @@ export function clearPendingDashboardPreferences(userId: string | null): void {
   } catch {
     // A stale outbox entry is harmless because preference updates are idempotent.
   }
+}
+
+export function readPendingWorkspaceMutation(userId: string | null): PendingWorkspaceMutation | null {
+  if (!userId || typeof window === 'undefined') {
+    return null;
+  }
+  const value = readJson(`${PENDING_WORKSPACE_PREFIX}${userId}`);
+  if (!isRecord(value) || typeof value.revision !== 'number' || !isRecord(value.mutation)) {
+    return null;
+  }
+  const mutation = parseWorkspaceMutation(value.mutation);
+  return mutation ? { revision: value.revision, mutation } : null;
+}
+
+function parseWorkspaceMutation(value: Record<string, unknown>): WorkspaceMutation | null {
+  const kind = value.kind;
+  if (kind === 'theme' && typeof value.value === 'string') {
+    const theme = normalizeUserWorkspacePreferences({ themeUsage: [{ theme: value.value, count: 0 }] }).themeUsage[0]?.theme;
+    return theme ? { kind, value: theme } : null;
+  }
+  if (kind === 'dashboard' && isRecord(value.value)) {
+    return { kind, value: normalizeDashboardPreferences(value.value) };
+  }
+  if (kind === 'workspace') {
+    return { kind, value: normalizeUserWorkspacePreferences(value.value) };
+  }
+  return null;
+}
+
+export function persistPendingWorkspaceMutation(userId: string | null, value: PendingWorkspaceMutation): void {
+  if (!userId || typeof window === 'undefined') {return;}
+  try {
+    window.localStorage.setItem(`${PENDING_WORKSPACE_PREFIX}${userId}`, JSON.stringify(value));
+  } catch {
+    // The active session still retains the mutation in memory.
+  }
+}
+
+export function clearPendingWorkspaceMutation(userId: string | null): void {
+  if (!userId || typeof window === 'undefined') {return;}
+  try {
+    window.localStorage.removeItem(`${PENDING_WORKSPACE_PREFIX}${userId}`);
+  } catch {
+    // A failed cleanup does not affect the confirmed server state.
+  }
+}
+
+export function removeLegacyDashboardPreferences(): void {
+  if (typeof window === 'undefined') {return;}
+  Object.values(LEGACY_KEYS).forEach((key) => window.localStorage.removeItem(key));
+  window.localStorage.removeItem('habit-theme');
+  window.localStorage.removeItem('habit-theme-usage');
 }

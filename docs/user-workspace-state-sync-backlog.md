@@ -224,7 +224,7 @@ git commit -m "feat(preferences): synchronize canonical workspace profile"
 
 ## UWS-004: Replace authenticated browser preference state with one server-synced store
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P1
 **Depends on:** UWS-003
 

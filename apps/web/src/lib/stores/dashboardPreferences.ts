@@ -3,7 +3,6 @@ import type { DashboardPreferences } from '@habbit-runner/shared';
 import {
   DEFAULT_DASHBOARD_PREFERENCES,
   normalizeDashboardPreferences,
-  persistLegacyDashboardPreferences,
   readLegacyDashboardPreferences
 } from '$lib/dashboard/preferences';
 
@@ -22,7 +21,6 @@ export function createDashboardPreferencesStore(): DashboardPreferencesStore {
     hydrate(value) {
       const normalized = normalizeDashboardPreferences(value);
       store.set(normalized);
-      persistLegacyDashboardPreferences(normalized);
       return normalized;
     },
     useLegacyFallback() {
@@ -33,7 +31,6 @@ export function createDashboardPreferencesStore(): DashboardPreferencesStore {
     update(value) {
       const normalized = normalizeDashboardPreferences(value);
       store.set(normalized);
-      persistLegacyDashboardPreferences(normalized);
       return normalized;
     },
     reset() {

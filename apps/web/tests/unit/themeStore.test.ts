@@ -1,10 +1,11 @@
 import { get } from 'svelte/store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DashboardPreferences, UserPreferences } from '@habbit-runner/shared';
+import { DEFAULT_WORKSPACE_PREFERENCES, type DashboardPreferences, type UserPreferences } from '@habbit-runner/shared';
+import type { SaveUserPreferencesRequest } from '$lib/api/theme';
 
 const { fetchUserPreferences, saveUserPreferences } = vi.hoisted(() => ({
   fetchUserPreferences: vi.fn<() => Promise<UserPreferences>>(),
-  saveUserPreferences: vi.fn<(preferences: { theme: string; timezone: string; dashboard?: DashboardPreferences }) => Promise<UserPreferences>>()
+  saveUserPreferences: vi.fn<(preferences: SaveUserPreferencesRequest) => Promise<UserPreferences>>()
 }));
 
 vi.mock('$lib/api/theme', () => ({ fetchUserPreferences, saveUserPreferences }));
@@ -19,6 +20,31 @@ const defaultPreferences: DashboardPreferences = {
   density: 'comfortable',
   themeUsage: {}
 };
+
+function serverPreferences(dashboard = defaultPreferences, revision = 1): UserPreferences {
+  return {
+    theme: 'cloud',
+    timezone: 'Europe/Belgrade',
+    dashboard,
+    workspace: {
+      ...DEFAULT_WORKSPACE_PREFERENCES,
+      dashboard: { ...DEFAULT_WORKSPACE_PREFERENCES.dashboard, ...dashboard }
+    },
+    revision
+  };
+}
+
+function confirmedFromRequest(preferences: SaveUserPreferencesRequest): UserPreferences {
+  const dashboard: DashboardPreferences = {
+    version: 1,
+    filter: preferences.workspace.dashboard.filter,
+    tags: [...preferences.workspace.dashboard.tags],
+    sort: preferences.workspace.dashboard.sort,
+    density: preferences.workspace.dashboard.density,
+    themeUsage: Object.fromEntries(preferences.workspace.themeUsage.map((entry) => [entry.theme, entry.count]))
+  };
+  return serverPreferences(dashboard, (preferences.revision ?? 0) + 1);
+}
 
 function storage(): Storage {
   const values = new Map<string, string>();
@@ -35,11 +61,7 @@ function storage(): Storage {
 beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage() });
   fetchUserPreferences.mockReset();
-  saveUserPreferences.mockReset().mockImplementation(async (preferences) => ({
-    theme: preferences.theme,
-    timezone: preferences.timezone,
-    dashboard: preferences.dashboard ?? defaultPreferences
-  }));
+  saveUserPreferences.mockReset().mockImplementation(async (preferences) => confirmedFromRequest(preferences));
 });
 
 describe('themeStore dashboard preference persistence', () => {
@@ -52,24 +74,28 @@ describe('themeStore dashboard preference persistence', () => {
     await vi.waitFor(() => expect(fetchUserPreferences).toHaveBeenCalledTimes(1));
 
     await store.setDashboardPreferences({ ...defaultPreferences, sort: 'smart', density: 'compact' });
-    resolvePreferences?.({ theme: 'cloud', timezone: 'Europe/Belgrade', dashboard: defaultPreferences });
+    resolvePreferences?.(serverPreferences());
     await initialization;
 
     expect(get(store).dashboard).toMatchObject({ sort: 'smart', density: 'compact' });
     expect(saveUserPreferences).toHaveBeenCalledWith(expect.objectContaining({
-      dashboard: expect.objectContaining({ sort: 'smart', density: 'compact' })
+      workspace: expect.objectContaining({
+        dashboard: expect.objectContaining({ sort: 'smart', density: 'compact' })
+      })
     }));
   });
 
   it('restores server-confirmed list settings after a fresh login with no browser state', async () => {
     let serverDashboard = defaultPreferences;
     window.localStorage.setItem('habbitRunner.auth.session', JSON.stringify({ userId: 'user-1' }));
-    fetchUserPreferences.mockImplementation(async () => ({
-      theme: 'cloud', timezone: 'Europe/Belgrade', dashboard: serverDashboard
-    }));
+    fetchUserPreferences.mockImplementation(async () => serverPreferences(serverDashboard));
     saveUserPreferences.mockImplementation(async (preferences) => {
-      serverDashboard = preferences.dashboard ?? defaultPreferences;
-      return { theme: preferences.theme, timezone: preferences.timezone, dashboard: serverDashboard };
+      serverDashboard = {
+        ...serverDashboard,
+        sort: preferences.workspace.dashboard.sort,
+        density: preferences.workspace.dashboard.density
+      };
+      return confirmedFromRequest(preferences);
     });
 
     const firstLogin = createThemeStore();
@@ -86,7 +112,7 @@ describe('themeStore dashboard preference persistence', () => {
 
   it('replays an unconfirmed setting change after logging in again', async () => {
     window.localStorage.setItem('habbitRunner.auth.session', JSON.stringify({ userId: 'user-1' }));
-    fetchUserPreferences.mockResolvedValue({ theme: 'cloud', timezone: 'Europe/Belgrade', dashboard: defaultPreferences });
+    fetchUserPreferences.mockResolvedValue(serverPreferences());
     saveUserPreferences.mockRejectedValueOnce(new Error('Temporary API failure'));
 
     const firstLogin = createThemeStore();
@@ -94,16 +120,14 @@ describe('themeStore dashboard preference persistence', () => {
     await firstLogin.setDashboardPreferences({ ...defaultPreferences, sort: 'smart', density: 'compact' });
     await firstLogin.setAuthenticated(false);
 
-    saveUserPreferences.mockImplementation(async (preferences) => ({
-      theme: preferences.theme,
-      timezone: preferences.timezone,
-      dashboard: preferences.dashboard ?? defaultPreferences
-    }));
+    saveUserPreferences.mockImplementation(async (preferences) => confirmedFromRequest(preferences));
     const secondLogin = createThemeStore();
     await secondLogin.initialize(true);
 
     expect(saveUserPreferences).toHaveBeenLastCalledWith(expect.objectContaining({
-      dashboard: expect.objectContaining({ sort: 'smart', density: 'compact' })
+      workspace: expect.objectContaining({
+        dashboard: expect.objectContaining({ sort: 'smart', density: 'compact' })
+      })
     }));
     expect(get(secondLogin).dashboard).toMatchObject({ sort: 'smart', density: 'compact' });
   });

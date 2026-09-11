@@ -6,9 +6,11 @@ export interface AuthTokenResponse {
 }
 
 export interface UserPreferences {
-  theme: string;
+  theme: ThemeId;
   timezone: string | null;
   dashboard: DashboardPreferences;
+  workspace: UserWorkspacePreferences;
+  revision: number;
 }
 
 export interface DashboardPreferences {
@@ -167,5 +169,45 @@ export function normalizeUserWorkspacePreferences(value: unknown): UserWorkspace
     progress: { period: progress.period === '4w' || progress.period === '12w' ? progress.period : '1w' },
     navigation: normalizeWorkspaceNavigation(navigation),
     themeUsage
+  };
+}
+
+export function normalizeUserPreferences(value: unknown): UserPreferences {
+  const source = isObject(value) ? value : {};
+  const theme = normalizeThemeId(source.theme);
+  const workspace = normalizeUserWorkspacePreferences(source.workspace);
+  const dashboard = normalizeLegacyDashboard(
+    isObject(source.dashboard) ? source.dashboard : workspace.dashboard,
+    workspace
+  );
+  return {
+    theme,
+    timezone: typeof source.timezone === 'string' ? source.timezone : null,
+    dashboard,
+    workspace,
+    revision: normalizeRevision(source.revision)
+  };
+}
+
+function normalizeThemeId(value: unknown): ThemeId {
+  return typeof value === 'string' && THEME_IDS.has(value as ThemeId) ? value as ThemeId : 'cloud';
+}
+
+function normalizeRevision(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function normalizeLegacyDashboard(
+  value: unknown,
+  workspace: UserWorkspacePreferences
+): DashboardPreferences {
+  const source = isObject(value) ? value : {};
+  return {
+    version: 1,
+    filter: source.filter === 'all' || source.filter === 'done' || source.filter === 'archived' ? source.filter : 'pending',
+    tags: normalizeTags(source.tags),
+    sort: source.sort === 'smart' ? 'smart' : 'custom',
+    density: source.density === 'compact' ? 'compact' : 'comfortable',
+    themeUsage: Object.fromEntries(workspace.themeUsage.map((entry) => [entry.theme, entry.count]))
   };
 }

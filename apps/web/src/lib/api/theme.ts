@@ -1,58 +1,68 @@
 import { API_BASE_URL } from '@/lib/core/config';
 import { authenticatedFetch } from '@/lib/auth/session';
-import { THEME_IDS, type ThemeId } from '@/lib/theme/themes';
-import type { DashboardPreferences, UserPreferences } from '@habbit-runner/shared';
-import { getCurrentUserTimeZone } from '@/lib/time/userTimezone';
-import { normalizeDashboardPreferences } from '$lib/dashboard/preferences';
+import type {
+  DashboardPreferences,
+  ThemeId,
+  UserPreferences,
+  UserWorkspacePreferences
+} from '@habbit-runner/shared';
+import { normalizeUserPreferences } from '@habbit-runner/shared';
+
+export interface SaveUserPreferencesRequest {
+  theme: ThemeId;
+  timezone: string;
+  workspace: UserWorkspacePreferences;
+  revision?: number;
+  dashboard?: DashboardPreferences;
+}
+
+export class PreferencesConflictError extends Error {
+  readonly current: UserPreferences;
+
+  constructor(current: UserPreferences) {
+    super('Preferences changed on another device');
+    this.name = 'PreferencesConflictError';
+    this.current = current;
+  }
+}
+
+async function readPreferences(response: Response): Promise<UserPreferences> {
+  return normalizeUserPreferences(await response.json() as unknown);
+}
 
 export async function fetchUserPreferences(): Promise<UserPreferences> {
-  const response = await authenticatedFetch(
-    `${API_BASE_URL}/auth/preferences`,
-    { method: 'GET' }
-  );
-
+  const response = await authenticatedFetch(`${API_BASE_URL}/auth/preferences`, { method: 'GET' });
   if (!response.ok) {
     throw new Error(`Preferences fetch failed: ${response.status}`);
   }
-
-  const payload = (await response.json()) as UserPreferences;
-  return {
-    theme: payload.theme,
-    timezone: payload.timezone ?? null,
-    dashboard: normalizeDashboardPreferences(payload.dashboard)
-  };
+  return readPreferences(response);
 }
 
-export async function saveUserPreferences(preferences: {
-  theme: ThemeId;
-  timezone: string;
-  dashboard?: DashboardPreferences;
-}): Promise<UserPreferences> {
-  const response = await authenticatedFetch(
-    `${API_BASE_URL}/auth/preferences`,
-    {
-      method: 'PUT',
-      body: JSON.stringify(preferences)
-    }
-  );
-
+export async function saveUserPreferences(request: SaveUserPreferencesRequest): Promise<UserPreferences> {
+  const response = await authenticatedFetch(`${API_BASE_URL}/auth/preferences`, {
+    method: 'PUT',
+    body: JSON.stringify(request)
+  });
+  if (response.status === 409) {
+    throw new PreferencesConflictError(await readPreferences(response));
+  }
   if (!response.ok) {
     throw new Error(`Preferences save failed: ${response.status}`);
   }
-
-  const payload = (await response.json()) as UserPreferences;
-  return {
-    theme: payload.theme,
-    timezone: payload.timezone ?? null,
-    dashboard: normalizeDashboardPreferences(payload.dashboard)
-  };
+  return readPreferences(response);
 }
 
 export async function fetchUserTheme(): Promise<ThemeId | null> {
   const preferences = await fetchUserPreferences();
-  return THEME_IDS.has(preferences.theme as ThemeId) ? (preferences.theme as ThemeId) : null;
+  return preferences.theme;
 }
 
 export async function saveUserTheme(theme: ThemeId): Promise<void> {
-  await saveUserPreferences({ theme, timezone: getCurrentUserTimeZone() });
+  const current = await fetchUserPreferences();
+  await saveUserPreferences({
+    theme,
+    timezone: current.timezone ?? '',
+    workspace: current.workspace,
+    revision: current.revision
+  });
 }
