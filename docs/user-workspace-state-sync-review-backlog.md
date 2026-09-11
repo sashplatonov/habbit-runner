@@ -81,7 +81,7 @@ git commit -m "fix(preferences): reject incomplete canonical updates"
 
 ## UWS-RVW-002: Preserve every pending workspace mutation across failures
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P1
 **Depends on:** UWS-RVW-001
 

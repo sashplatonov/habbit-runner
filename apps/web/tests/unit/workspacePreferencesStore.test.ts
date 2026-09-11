@@ -1,6 +1,10 @@
 import { get } from 'svelte/store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_WORKSPACE_PREFERENCES, type UserPreferences } from '@habbit-runner/shared';
+import {
+  persistPendingWorkspaceMutation,
+  readPendingWorkspaceMutation
+} from '$lib/dashboard/preferences';
 
 const { fetchUserPreferences, saveUserPreferences } = vi.hoisted(() => ({
   fetchUserPreferences: vi.fn(),
@@ -43,6 +47,28 @@ beforeEach(() => {
 });
 
 describe('canonical workspace preference store', () => {
+  it('reads legacy single-mutation outbox records and persists typed mutation batches', () => {
+    window.localStorage.setItem('hr_workspace_pending_v1:user-1', JSON.stringify({
+      revision: 4,
+      mutation: { kind: 'workspace-progress', value: { period: '12w' } }
+    }));
+
+    expect(readPendingWorkspaceMutation('user-1')).toEqual({
+      revision: 4,
+      mutations: [{ kind: 'workspace-progress', value: { period: '12w' } }]
+    });
+
+    persistPendingWorkspaceMutation('user-1', {
+      revision: 4,
+      mutations: [
+        { kind: 'workspace-dashboard', value: DEFAULT_WORKSPACE_PREFERENCES.dashboard },
+        { kind: 'workspace-progress', value: { period: '12w' } }
+      ]
+    });
+
+    expect(readPendingWorkspaceMutation('user-1')?.mutations).toHaveLength(2);
+  });
+
   it('imports legacy browser values only for an uninitialized server profile', async () => {
     window.localStorage.setItem('habit-theme', 'matrix');
     window.localStorage.setItem('hr_dashboard_sort_mode_v1', JSON.stringify('smart'));

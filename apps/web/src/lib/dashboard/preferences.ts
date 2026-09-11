@@ -41,8 +41,10 @@ export type WorkspaceMutation =
 
 export interface PendingWorkspaceMutation {
   revision: number;
-  mutation: WorkspaceMutation;
+  mutations: WorkspaceMutation[];
 }
+
+const MAX_PENDING_MUTATIONS = 32;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -170,11 +172,18 @@ export function readPendingWorkspaceMutation(userId: string | null): PendingWork
     return null;
   }
   const value = readJson(`${PENDING_WORKSPACE_PREFIX}${userId}`);
-  if (!isRecord(value) || typeof value.revision !== 'number' || !isRecord(value.mutation)) {
+  if (!isRecord(value) || typeof value.revision !== 'number') {
     return null;
   }
-  const mutation = parseWorkspaceMutation(value.mutation);
-  return mutation ? { revision: value.revision, mutation } : null;
+  const values = Array.isArray(value.mutations)
+    ? value.mutations
+    : isRecord(value.mutation) ? [value.mutation] : [];
+  const mutations = values
+    .filter(isRecord)
+    .map(parseWorkspaceMutation)
+    .filter((mutation): mutation is WorkspaceMutation => mutation !== null)
+    .slice(0, MAX_PENDING_MUTATIONS);
+  return mutations.length > 0 ? { revision: value.revision, mutations } : null;
 }
 
 function parseWorkspaceMutation(value: Record<string, unknown>): WorkspaceMutation | null {
@@ -209,7 +218,10 @@ const workspaceMutationParsers: Record<string, (value: unknown) => WorkspaceMuta
 export function persistPendingWorkspaceMutation(userId: string | null, value: PendingWorkspaceMutation): void {
   if (!userId || typeof window === 'undefined') {return;}
   try {
-    window.localStorage.setItem(`${PENDING_WORKSPACE_PREFIX}${userId}`, JSON.stringify(value));
+    window.localStorage.setItem(`${PENDING_WORKSPACE_PREFIX}${userId}`, JSON.stringify({
+      revision: value.revision,
+      mutations: value.mutations.slice(-MAX_PENDING_MUTATIONS)
+    }));
   } catch {
     // The active session still retains the mutation in memory.
   }

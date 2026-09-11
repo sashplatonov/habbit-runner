@@ -146,6 +146,89 @@ describe('themeStore dashboard preference persistence', () => {
     expect(get(secondLogin).dashboard).toMatchObject({ sort: 'smart', density: 'compact' });
   });
 
+  it('retains a failed dashboard mutation when a later progress mutation succeeds', async () => {
+    fetchUserPreferences.mockResolvedValue(serverPreferences());
+    saveUserPreferences
+      .mockRejectedValueOnce(new Error('Temporary API failure'))
+      .mockImplementation(async (request) => ({
+        ...preferencesFromWorkspace(request.workspace, (request.revision ?? 0) + 1),
+        theme: request.theme,
+        timezone: request.timezone
+      }));
+    const store = createThemeStore();
+
+    await store.initialize(true);
+    await store.setDashboardPreferences({ ...defaultPreferences, sort: 'smart' });
+    await store.setProgressPeriod('12w');
+
+    expect(saveUserPreferences).toHaveBeenLastCalledWith(expect.objectContaining({
+      workspace: expect.objectContaining({
+        dashboard: expect.objectContaining({ sort: 'smart' }),
+        progress: { period: '12w' }
+      })
+    }));
+    expect(get(store).workspace).toMatchObject({
+      dashboard: { sort: 'smart' }, progress: { period: '12w' }
+    });
+  });
+
+  it('rebases every pending mutation after a conflict and retains remote sections', async () => {
+    const initial = serverPreferences();
+    const remoteWorkspace = {
+      ...initial.workspace,
+      dashboard: { ...initial.workspace.dashboard, searchQuery: 'remote query' }
+    };
+    const remote = preferencesFromWorkspace(remoteWorkspace, 2);
+    fetchUserPreferences.mockResolvedValue(initial);
+    saveUserPreferences
+      .mockRejectedValueOnce(new Error('Temporary API failure'))
+      .mockRejectedValueOnce(Object.assign(new Error('Preferences conflict'), {
+        name: 'PreferencesConflictError', current: remote
+      }))
+      .mockImplementation(async (request) => preferencesFromWorkspace(request.workspace, (request.revision ?? 0) + 1));
+    const store = createThemeStore();
+
+    await store.initialize(true);
+    await store.setDashboardPreferences({ ...defaultPreferences, sort: 'smart' });
+    await store.setProgressPeriod('12w');
+
+    expect(saveUserPreferences).toHaveBeenLastCalledWith(expect.objectContaining({
+      revision: 2,
+      workspace: expect.objectContaining({
+        dashboard: expect.objectContaining({ searchQuery: 'remote query', sort: 'smart' }),
+        progress: { period: '12w' }
+      })
+    }));
+    expect(get(store).workspace).toMatchObject({
+      dashboard: { searchQuery: 'remote query', sort: 'smart' }, progress: { period: '12w' }
+    });
+  });
+
+  it('replays all pending mutations for the authenticated user after reload', async () => {
+    window.localStorage.setItem('habbitRunner.auth.session', JSON.stringify({ userId: 'user-1' }));
+    fetchUserPreferences.mockResolvedValue(serverPreferences());
+    saveUserPreferences
+      .mockRejectedValueOnce(new Error('Dashboard unavailable'))
+      .mockRejectedValueOnce(new Error('Progress unavailable'))
+      .mockImplementation(async (request) => preferencesFromWorkspace(request.workspace, (request.revision ?? 0) + 1));
+    const firstLogin = createThemeStore();
+
+    await firstLogin.initialize(true);
+    await firstLogin.setDashboardPreferences({ ...defaultPreferences, sort: 'smart' });
+    await firstLogin.setProgressPeriod('12w');
+    await firstLogin.setAuthenticated(false);
+
+    const secondLogin = createThemeStore();
+    await secondLogin.initialize(true);
+
+    expect(saveUserPreferences).toHaveBeenLastCalledWith(expect.objectContaining({
+      workspace: expect.objectContaining({
+        dashboard: expect.objectContaining({ sort: 'smart' }),
+        progress: { period: '12w' }
+      })
+    }));
+  });
+
   it('rebases a progress change over an independent remote dashboard change after a conflict', async () => {
     const initial = serverPreferences();
     const remoteWorkspace = {

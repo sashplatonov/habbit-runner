@@ -164,7 +164,7 @@ export function createThemeStore(): ThemeStore {
       serverSyncReady: current.serverSyncReady, isAuthenticated: current.isAuthenticated }));
     if (current.isAuthenticated) {
       sync.remember(mutation, current.revision);
-      if (current.serverSyncReady) {await sync.enqueue(mutation, current.revision);}
+      if (current.serverSyncReady) {await sync.enqueue();}
     }
   }
 
@@ -186,9 +186,11 @@ export function createThemeStore(): ThemeStore {
       const next = setCurrentUserTimeZone(timezone);
       store.set(snapshot({ theme: current.theme, timezone: next, workspace: current.workspace,
         revision: current.revision, serverSyncReady: current.serverSyncReady, isAuthenticated: current.isAuthenticated }));
+      if (current.isAuthenticated) {
+        sync.remember({ kind: 'timezone', value: next }, current.revision);
+      }
       if (current.isAuthenticated && current.serverSyncReady) {
-        sync.setTimezone(next);
-        await sync.enqueue({ kind: 'timezone', value: next }, current.revision);
+        await sync.enqueue();
       }
     },
     async setDashboardPreferences(preferences) {
@@ -243,23 +245,65 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
     applyTheme(nextTheme);
     store.set(snapshot({ theme: nextTheme, timezone: normalized.timezone ?? current.timezone,
       workspace: normalized.workspace, revision: normalized.revision, serverSyncReady: true, isAuthenticated: true }));
+    applyPendingToStore();
   }
 
-  function requestFor(value: UserPreferences, mutation: WorkspaceMutation, revision: number): SaveUserPreferencesRequest {
-    return { theme: mutation.kind === 'theme' ? mutation.value : value.theme,
-      timezone: mutation.kind === 'timezone' ? mutation.value : value.timezone ?? '',
-      workspace: applyMutation(value.workspace, mutation), revision };
+  function requestFor(value: UserPreferences, mutations: WorkspaceMutation[], revision: number): SaveUserPreferencesRequest {
+    let theme = value.theme;
+    let timezone = value.timezone ?? '';
+    let workspace = value.workspace;
+    mutations.forEach((mutation) => {
+      if (mutation.kind === 'theme') {
+        theme = mutation.value;
+      } else if (mutation.kind === 'timezone') {
+        timezone = mutation.value;
+      } else {
+        workspace = applyMutation(workspace, mutation);
+      }
+    });
+    return { theme, timezone, workspace, revision };
   }
 
-  async function writeMutation(mutation: WorkspaceMutation, originalRevision: number): Promise<void> {
-    if (!confirmed) { return; }
-    try {
-      setConfirmed(await preferencesApi.saveUserPreferences(requestFor(confirmed, mutation, originalRevision)));
-      pending = null;
+  function appendPending(mutation: WorkspaceMutation, revision: number): void {
+    const mutations = pending?.mutations ?? [];
+    pending = { revision: pending?.revision ?? revision, mutations: [...mutations, mutation].slice(-32) };
+    persistPendingWorkspaceMutation(currentUserId(), pending);
+  }
+
+  function removeMutations(sent: WorkspaceMutation[]): void {
+    if (!pending) { return; }
+    const remaining = pending.mutations.filter((mutation) => !sent.includes(mutation));
+    pending = remaining.length > 0 ? { ...pending, mutations: remaining } : null;
+    if (pending) {
+      persistPendingWorkspaceMutation(currentUserId(), pending);
+    } else {
       clearPendingWorkspaceMutation(currentUserId());
+    }
+  }
+
+  function applyPendingToStore(): void {
+    if (!confirmed || !pending?.mutations.length) { return; }
+    const current = get(store);
+    const rebased = requestFor(confirmed, pending.mutations, confirmed.revision);
+    const nextTheme = themeId(rebased.theme);
+    setCurrentUserTimeZone(rebased.timezone || current.timezone);
+    applyTheme(nextTheme);
+    store.set(snapshot({ theme: nextTheme, timezone: rebased.timezone || current.timezone,
+      workspace: rebased.workspace, revision: confirmed.revision, serverSyncReady: true, isAuthenticated: true,
+      syncError: current.syncError }));
+  }
+
+  async function writePending(): Promise<void> {
+    if (!confirmed || !pending?.mutations.length) { return; }
+    const sent = pending.mutations;
+    const originalRevision = pending.revision;
+    try {
+      const saved = await preferencesApi.saveUserPreferences(requestFor(confirmed, sent, originalRevision));
+      removeMutations(sent);
+      setConfirmed(saved);
     } catch (error) {
       if (isPreferencesConflict(error)) {
-        if (!canRebase(mutation)) {
+        if (sent.some((mutation) => !canRebase(mutation))) {
           setConfirmed(error.current);
           pending = null;
           clearPendingWorkspaceMutation(currentUserId());
@@ -267,18 +311,24 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
           return;
         }
         try {
-          setConfirmed(await preferencesApi.saveUserPreferences(requestFor(error.current, mutation, error.current.revision)));
-          pending = null;
-          clearPendingWorkspaceMutation(currentUserId());
+          if (pending) {
+            pending = { ...pending, revision: error.current.revision };
+            persistPendingWorkspaceMutation(currentUserId(), pending);
+          }
+          const retry = await preferencesApi.saveUserPreferences(
+            requestFor(error.current, pending?.mutations ?? sent, error.current.revision));
+          removeMutations(sent);
+          setConfirmed(retry);
           return;
         } catch (retryError) {
-          pending = { revision: error.current.revision, mutation };
+          pending = pending ? { ...pending, revision: error.current.revision } : { revision: error.current.revision, mutations: sent };
           persistPendingWorkspaceMutation(currentUserId(), pending);
+          setConfirmed(error.current);
           store.update((current) => ({ ...current, syncError: retryError instanceof Error ? retryError.message : 'Preference retry failed' }));
           return;
         }
       }
-      pending = { revision: originalRevision, mutation };
+      pending = pending ?? { revision: originalRevision, mutations: sent };
       persistPendingWorkspaceMutation(currentUserId(), pending);
       logClientError('theme.persist_failed', 'Failed to synchronize user preferences', {
         error: error instanceof Error ? error.message : String(error)
@@ -287,8 +337,8 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
     }
   }
 
-  function enqueue(mutation: WorkspaceMutation, revision: number): Promise<void> {
-    queue = queue.catch(() => undefined).then(() => writeMutation(mutation, revision));
+  function enqueue(): Promise<void> {
+    queue = queue.catch(() => undefined).then(() => writePending());
     return queue;
   }
 
@@ -298,16 +348,17 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
     store.update((current) => ({ ...current, serverSyncReady: false, syncError: null }));
     try {
       const remote = await preferencesApi.fetchUserPreferences();
+      pending ??= readPendingWorkspaceMutation(currentUserId());
       if (remote.revision === 0) {
         const imported = importedWorkspace(remote);
         setConfirmed({ ...remote, theme: imported.theme, workspace: imported.workspace });
-        await enqueue({ kind: 'workspace-bootstrap', value: imported.workspace }, remote.revision);
+        appendPending({ kind: 'workspace-bootstrap', value: imported.workspace }, remote.revision);
+        await enqueue();
         if (!pending) { removeLegacyDashboardPreferences(); }
       } else {
         setConfirmed(remote);
       }
-      pending ??= readPendingWorkspaceMutation(currentUserId());
-      if (pending) { await enqueue(pending.mutation, remote.revision); }
+      if (pending) { await enqueue(); }
     } catch (error) {
       logClientError('theme.hydrate_failed', 'Failed to synchronize user preferences', {
         error: error instanceof Error ? error.message : String(error)
@@ -319,17 +370,10 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
   }
 
   function remember(mutation: WorkspaceMutation, revision: number): void {
-    pending = { revision, mutation };
-    persistPendingWorkspaceMutation(currentUserId(), pending);
+    appendPending(mutation, revision);
   }
 
-  function setTimezone(timezone: string): void {
-    if (confirmed) {
-      confirmed = { ...confirmed, timezone };
-    }
-  }
-
-  return { enqueue, hydrate, remember, setTimezone };
+  return { enqueue, hydrate, remember };
 }
 
 export const themeStore = createThemeStore();
