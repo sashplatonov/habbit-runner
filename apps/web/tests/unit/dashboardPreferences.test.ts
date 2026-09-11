@@ -9,10 +9,37 @@ import {
 } from '$lib/dashboard/preferences';
 import { createDashboardPreferencesStore } from '$lib/stores/dashboardPreferences';
 import { get } from 'svelte/store';
+import {
+  DEFAULT_WORKSPACE_PREFERENCES,
+  normalizeUserWorkspacePreferences
+} from '@habbit-runner/shared';
 
 describe('dashboard preferences', () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  it('normalizes the closed workspace contract and preserves stable wire values', () => {
+    expect(normalizeUserWorkspacePreferences({
+      dashboard: { filter: 'invalid', searchQuery: '  focus  ', tags: ['work', 'work'] },
+      progress: { period: '12w' },
+      navigation: { screen: 'habit-detail', selectedHabitId: 'not-a-uuid' },
+      themeUsage: [{ theme: 'cloud', count: 3 }, { theme: 'cloud', count: 8 }, { theme: 'broken', count: 2 }]
+    })).toEqual({
+      ...DEFAULT_WORKSPACE_PREFERENCES,
+      dashboard: { ...DEFAULT_WORKSPACE_PREFERENCES.dashboard, searchQuery: 'focus', tags: ['work'] },
+      progress: { period: '12w' },
+      themeUsage: [{ theme: 'cloud', count: 3 }]
+    });
+  });
+
+  it('restores a selected habit only for a valid habit-detail UUID', () => {
+    const normalized = normalizeUserWorkspacePreferences({
+      navigation: { screen: 'habit-detail', selectedHabitId: '550e8400-e29b-41d4-a716-446655440000' }
+    });
+    expect(normalized.navigation).toEqual({
+      screen: 'habit-detail', selectedHabitId: '550e8400-e29b-41d4-a716-446655440000'
+    });
   });
 
   it('normalizes unsupported values and bounds collections', () => {

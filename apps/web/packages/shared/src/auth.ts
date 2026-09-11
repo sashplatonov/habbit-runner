@@ -19,3 +19,153 @@ export interface DashboardPreferences {
   density: 'comfortable' | 'compact';
   themeUsage: Record<string, number>;
 }
+
+export type ThemeId =
+  | 'cloud'
+  | 'peach'
+  | 'mint'
+  | 'lavender'
+  | 'paper'
+  | 'midnight'
+  | 'graphite'
+  | 'ember'
+  | 'violet'
+  | 'matrix'
+  | 'arctic'
+  | 'aurora'
+  | 'dune'
+  | 'lagoon'
+  | 'sakura';
+
+export type DashboardFilter = 'pending' | 'all' | 'done' | 'archived';
+export type DashboardSort = 'custom' | 'smart';
+export type DashboardDensity = 'comfortable' | 'compact';
+export type ProgressPeriod = '1w' | '4w' | '12w';
+export type WorkspaceScreen = 'dashboard' | 'progress' | 'account' | 'habit-detail';
+
+export interface WorkspaceDashboardPreferences {
+  filter: DashboardFilter;
+  searchQuery: string;
+  tags: string[];
+  sort: DashboardSort;
+  density: DashboardDensity;
+}
+
+export interface ProgressWorkspacePreferences {
+  period: ProgressPeriod;
+}
+
+export interface WorkspaceNavigation {
+  screen: WorkspaceScreen;
+  selectedHabitId: string | null;
+}
+
+export interface ThemeUsage {
+  theme: ThemeId;
+  count: number;
+}
+
+export interface UserWorkspacePreferences {
+  version: 1;
+  dashboard: WorkspaceDashboardPreferences;
+  progress: ProgressWorkspacePreferences;
+  navigation: WorkspaceNavigation;
+  themeUsage: ThemeUsage[];
+}
+
+export const DEFAULT_WORKSPACE_PREFERENCES: UserWorkspacePreferences = {
+  version: 1,
+  dashboard: {
+    filter: 'pending',
+    searchQuery: '',
+    tags: [],
+    sort: 'custom',
+    density: 'comfortable'
+  },
+  progress: { period: '1w' },
+  navigation: { screen: 'dashboard', selectedHabitId: null },
+  themeUsage: []
+};
+
+const THEME_IDS: ReadonlySet<ThemeId> = new Set([
+  'cloud', 'peach', 'mint', 'lavender', 'paper', 'midnight', 'graphite', 'ember',
+  'violet', 'matrix', 'arctic', 'aurora', 'dune', 'lagoon', 'sakura'
+]);
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isObject(value: unknown): value is { [key: string]: unknown } {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeTags(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((tag): tag is string => typeof tag === 'string')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0 && tag.length <= 40)
+      .filter((tag, index, tags) => tags.indexOf(tag) === index)
+      .slice(0, 50)
+    : [];
+}
+
+function normalizeThemeUsage(value: unknown): ThemeUsage[] {
+  const entries = Array.isArray(value) ? value : [];
+  const themeUsage: ThemeUsage[] = [];
+  for (const entry of entries) {
+    if (!isObject(entry) || typeof entry.theme !== 'string' || !THEME_IDS.has(entry.theme as ThemeId)) {
+      continue;
+    }
+    if (!Number.isSafeInteger(entry.count) || (entry.count as number) < 0) {
+      continue;
+    }
+    if (themeUsage.some((item) => item.theme === entry.theme)) {
+      continue;
+    }
+    themeUsage.push({ theme: entry.theme as ThemeId, count: Math.min(entry.count as number, 1_000_000) });
+    if (themeUsage.length === 15) {
+      break;
+    }
+  }
+  return themeUsage;
+}
+
+function normalizeWorkspaceScreen(value: unknown): WorkspaceScreen {
+  return value === 'progress' || value === 'account' || value === 'habit-detail' ? value : 'dashboard';
+}
+
+function normalizeWorkspaceNavigation(value: { [key: string]: unknown }): WorkspaceNavigation {
+  const screen = normalizeWorkspaceScreen(value.screen);
+  const selectedHabitId = screen === 'habit-detail' && typeof value.selectedHabitId === 'string'
+    && UUID_PATTERN.test(value.selectedHabitId) ? value.selectedHabitId : null;
+  return { screen: screen === 'habit-detail' && selectedHabitId === null ? 'dashboard' : screen, selectedHabitId };
+}
+
+function normalizeWorkspaceDashboard(value: { [key: string]: unknown }): WorkspaceDashboardPreferences {
+  const filter = value.filter === 'all' || value.filter === 'done' || value.filter === 'archived' ? value.filter : 'pending';
+  const sort = value.sort === 'smart' ? 'smart' : 'custom';
+  const density = value.density === 'compact' ? 'compact' : 'comfortable';
+  return {
+    filter,
+    searchQuery: typeof value.searchQuery === 'string' ? value.searchQuery.trim().slice(0, 200) : '',
+    tags: normalizeTags(value.tags),
+    sort,
+    density
+  };
+}
+
+export function normalizeUserWorkspacePreferences(value: unknown): UserWorkspacePreferences {
+  const source = isObject(value) ? value : {};
+  const dashboard = isObject(source.dashboard) ? source.dashboard : {};
+  const progress = isObject(source.progress) ? source.progress : {};
+  const navigation = isObject(source.navigation) ? source.navigation : {};
+  const usage = Array.isArray(source.themeUsage) ? source.themeUsage : [];
+  const themeUsage = normalizeThemeUsage(usage);
+
+  return {
+    version: 1,
+    dashboard: normalizeWorkspaceDashboard(dashboard),
+    progress: { period: progress.period === '4w' || progress.period === '12w' ? progress.period : '1w' },
+    navigation: normalizeWorkspaceNavigation(navigation),
+    themeUsage
+  };
+}

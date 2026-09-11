@@ -1,25 +1,12 @@
 package com.sashplatonov.habbit.runner.auth.support;
 
 import java.util.Set;
+import java.util.Arrays;
 
 public final class ThemeCatalog {
-  private static final String DEFAULT_THEME = "cloud";
-  private static final Set<String> THEME_IDS = Set.of(
-      "midnight",
-      "ember",
-      "violet",
-      "matrix",
-      "arctic",
-      "graphite",
-      "aurora",
-      "sakura",
-      "lavender",
-      "mint",
-      "peach",
-      "dune",
-      "lagoon",
-      DEFAULT_THEME
-  );
+  private static final String DEFAULT_THEME = ThemeId.CLOUD.wireValue();
+  private static final Set<String> THEME_IDS = Set.copyOf(
+      Arrays.stream(ThemeId.values()).map(ThemeId::wireValue).toList());
 
   private ThemeCatalog() {
   }

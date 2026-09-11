@@ -3,10 +3,10 @@ package com.sashplatonov.habbit.runner.auth.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
-import java.util.Map;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record DashboardPreferences(
