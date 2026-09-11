@@ -1,9 +1,12 @@
 import {
   normalizeUserWorkspacePreferences,
   type DashboardPreferences,
+  type ProgressWorkspacePreferences,
   type ThemeId,
+  type ThemeUsage,
   type UserWorkspacePreferences,
-  type WorkspaceDashboardPreferences
+  type WorkspaceDashboardPreferences,
+  type WorkspaceNavigation
 } from '@habbit-runner/shared';
 
 export const DEFAULT_DASHBOARD_PREFERENCES: DashboardPreferences = {
@@ -27,7 +30,13 @@ const PENDING_WORKSPACE_PREFIX = 'hr_workspace_pending_v1:';
 
 export type WorkspaceMutation =
   | { kind: 'theme'; value: ThemeId }
+  | { kind: 'timezone'; value: string }
   | { kind: 'dashboard'; value: DashboardPreferences }
+  | { kind: 'workspace-dashboard'; value: WorkspaceDashboardPreferences }
+  | { kind: 'workspace-progress'; value: ProgressWorkspacePreferences }
+  | { kind: 'workspace-navigation'; value: WorkspaceNavigation }
+  | { kind: 'workspace-theme-usage'; value: ThemeUsage[] }
+  | { kind: 'workspace-bootstrap'; value: UserWorkspacePreferences }
   | { kind: 'workspace'; value: UserWorkspacePreferences };
 
 export interface PendingWorkspaceMutation {
@@ -169,19 +178,33 @@ export function readPendingWorkspaceMutation(userId: string | null): PendingWork
 }
 
 function parseWorkspaceMutation(value: Record<string, unknown>): WorkspaceMutation | null {
-  const kind = value.kind;
-  if (kind === 'theme' && typeof value.value === 'string') {
-    const theme = normalizeUserWorkspacePreferences({ themeUsage: [{ theme: value.value, count: 0 }] }).themeUsage[0]?.theme;
-    return theme ? { kind, value: theme } : null;
-  }
-  if (kind === 'dashboard' && isRecord(value.value)) {
-    return { kind, value: normalizeDashboardPreferences(value.value) };
-  }
-  if (kind === 'workspace') {
-    return { kind, value: normalizeUserWorkspacePreferences(value.value) };
-  }
-  return null;
+  return typeof value.kind === 'string' ? workspaceMutationParsers[value.kind]?.(value.value) ?? null : null;
 }
+
+const workspaceMutationParsers: Record<string, (value: unknown) => WorkspaceMutation | null> = {
+  theme: (value) => {
+    const theme = typeof value === 'string'
+      ? normalizeUserWorkspacePreferences({ themeUsage: [{ theme: value, count: 0 }] }).themeUsage[0]?.theme
+      : undefined;
+    return theme ? { kind: 'theme', value: theme } : null;
+  },
+  timezone: (value) => typeof value === 'string' ? { kind: 'timezone', value } : null,
+  dashboard: (value) => isRecord(value) ? { kind: 'dashboard', value: normalizeDashboardPreferences(value) } : null,
+  'workspace-dashboard': (value) => isRecord(value)
+    ? { kind: 'workspace-dashboard', value: normalizeUserWorkspacePreferences({ dashboard: value }).dashboard }
+    : null,
+  'workspace-progress': (value) => isRecord(value)
+    ? { kind: 'workspace-progress', value: normalizeUserWorkspacePreferences({ progress: value }).progress }
+    : null,
+  'workspace-navigation': (value) => isRecord(value)
+    ? { kind: 'workspace-navigation', value: normalizeUserWorkspacePreferences({ navigation: value }).navigation }
+    : null,
+  'workspace-theme-usage': (value) => Array.isArray(value)
+    ? { kind: 'workspace-theme-usage', value: normalizeUserWorkspacePreferences({ themeUsage: value }).themeUsage }
+    : null,
+  'workspace-bootstrap': (value) => ({ kind: 'workspace-bootstrap', value: normalizeUserWorkspacePreferences(value) }),
+  workspace: (value) => ({ kind: 'workspace', value: normalizeUserWorkspacePreferences(value) })
+};
 
 export function persistPendingWorkspaceMutation(userId: string | null, value: PendingWorkspaceMutation): void {
   if (!userId || typeof window === 'undefined') {return;}

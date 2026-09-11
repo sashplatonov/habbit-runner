@@ -104,13 +104,29 @@ export function applyTheme(theme: ThemeId, _persist = false): void {
 }
 
 function applyMutation(base: UserWorkspacePreferences, mutation: WorkspaceMutation): UserWorkspacePreferences {
-  if (mutation.kind === 'theme') {return base;}
-  if (mutation.kind === 'workspace') {return normalizeUserWorkspacePreferences(mutation.value);}
-  const dashboard = toWorkspaceDashboard(mutation.value);
-  return normalizeUserWorkspacePreferences({
-    ...base,
-    dashboard: { ...base.dashboard, ...dashboard, searchQuery: base.dashboard.searchQuery }
-  });
+  switch (mutation.kind) {
+    case 'theme':
+    case 'timezone':
+      return base;
+    case 'workspace':
+    case 'workspace-bootstrap':
+      return normalizeUserWorkspacePreferences(mutation.value);
+    case 'dashboard': {
+      const dashboard = toWorkspaceDashboard(mutation.value);
+      return normalizeUserWorkspacePreferences({
+        ...base,
+        dashboard: { ...base.dashboard, ...dashboard, searchQuery: base.dashboard.searchQuery }
+      });
+    }
+    case 'workspace-dashboard':
+      return normalizeUserWorkspacePreferences({ ...base, dashboard: mutation.value });
+    case 'workspace-progress':
+      return normalizeUserWorkspacePreferences({ ...base, progress: mutation.value });
+    case 'workspace-navigation':
+      return normalizeUserWorkspacePreferences({ ...base, navigation: mutation.value });
+    case 'workspace-theme-usage':
+      return normalizeUserWorkspacePreferences({ ...base, themeUsage: mutation.value });
+  }
 }
 
 function legacyTheme(): ThemeId {
@@ -172,32 +188,28 @@ export function createThemeStore(): ThemeStore {
         revision: current.revision, serverSyncReady: current.serverSyncReady, isAuthenticated: current.isAuthenticated }));
       if (current.isAuthenticated && current.serverSyncReady) {
         sync.setTimezone(next);
-        await sync.enqueue({ kind: 'workspace', value: current.workspace }, current.revision);
+        await sync.enqueue({ kind: 'timezone', value: next }, current.revision);
       }
     },
     async setDashboardPreferences(preferences) {
       await mutate({ kind: 'dashboard', value: preferences });
     },
     async setDashboardWorkspace(dashboard) {
-      const current = get(store);
-      await mutate({ kind: 'workspace', value: { ...current.workspace, dashboard } });
+      await mutate({ kind: 'workspace-dashboard', value: dashboard });
     },
     async setProgressPeriod(period) {
-      const current = get(store);
-      await mutate({ kind: 'workspace', value: { ...current.workspace, progress: { period } } });
+      await mutate({ kind: 'workspace-progress', value: { period } });
     },
     async setNavigation(screen, selectedHabitId = null) {
-      const current = get(store);
-      await mutate({ kind: 'workspace', value: {
-        ...current.workspace,
-        navigation: { screen, selectedHabitId: screen === 'habit-detail' ? selectedHabitId : null }
+      await mutate({ kind: 'workspace-navigation', value: {
+        screen, selectedHabitId: screen === 'habit-detail' ? selectedHabitId : null
       } });
     },
     async recordThemeSelection(theme) {
       const current = get(store);
       const usage = usageRecord(current.workspace);
       usage[theme] = (usage[theme] ?? 0) + 1;
-      await mutate({ kind: 'workspace', value: workspaceWithUsage(current.workspace, usage) });
+      await mutate({ kind: 'workspace-theme-usage', value: workspaceWithUsage(current.workspace, usage).themeUsage });
     },
     async setAuthenticated(isAuthenticated) {
       if (!initialized) {return this.initialize(isAuthenticated);}
@@ -234,7 +246,8 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
   }
 
   function requestFor(value: UserPreferences, mutation: WorkspaceMutation, revision: number): SaveUserPreferencesRequest {
-    return { theme: mutation.kind === 'theme' ? mutation.value : value.theme, timezone: value.timezone ?? '',
+    return { theme: mutation.kind === 'theme' ? mutation.value : value.theme,
+      timezone: mutation.kind === 'timezone' ? mutation.value : value.timezone ?? '',
       workspace: applyMutation(value.workspace, mutation), revision };
   }
 
@@ -246,6 +259,13 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
       clearPendingWorkspaceMutation(currentUserId());
     } catch (error) {
       if (isPreferencesConflict(error)) {
+        if (!canRebase(mutation)) {
+          setConfirmed(error.current);
+          pending = null;
+          clearPendingWorkspaceMutation(currentUserId());
+          store.update((current) => ({ ...current, syncError: 'Preferences changed on another device' }));
+          return;
+        }
         try {
           setConfirmed(await preferencesApi.saveUserPreferences(requestFor(error.current, mutation, error.current.revision)));
           pending = null;
@@ -281,7 +301,7 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
       if (remote.revision === 0) {
         const imported = importedWorkspace(remote);
         setConfirmed({ ...remote, theme: imported.theme, workspace: imported.workspace });
-        await enqueue({ kind: 'workspace', value: imported.workspace }, remote.revision);
+        await enqueue({ kind: 'workspace-bootstrap', value: imported.workspace }, remote.revision);
         if (!pending) { removeLegacyDashboardPreferences(); }
       } else {
         setConfirmed(remote);
@@ -316,4 +336,8 @@ export const themeStore = createThemeStore();
 
 function isPreferencesConflict(error: unknown): error is { current: UserPreferences } {
   return error instanceof Error && error.name === 'PreferencesConflictError' && 'current' in error;
+}
+
+function canRebase(mutation: WorkspaceMutation): boolean {
+  return mutation.kind !== 'workspace' && mutation.kind !== 'workspace-bootstrap';
 }

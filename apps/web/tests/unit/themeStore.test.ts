@@ -46,6 +46,20 @@ function confirmedFromRequest(preferences: SaveUserPreferencesRequest): UserPref
   return serverPreferences(dashboard, (preferences.revision ?? 0) + 1);
 }
 
+function preferencesFromWorkspace(workspace: UserPreferences['workspace'], revision: number): UserPreferences {
+  return {
+    ...serverPreferences({
+      ...defaultPreferences,
+      filter: workspace.dashboard.filter,
+      tags: workspace.dashboard.tags,
+      sort: workspace.dashboard.sort,
+      density: workspace.dashboard.density,
+      themeUsage: Object.fromEntries(workspace.themeUsage.map((entry) => [entry.theme, entry.count]))
+    }, revision),
+    workspace
+  };
+}
+
 function storage(): Storage {
   const values = new Map<string, string>();
   return {
@@ -130,5 +144,33 @@ describe('themeStore dashboard preference persistence', () => {
       })
     }));
     expect(get(secondLogin).dashboard).toMatchObject({ sort: 'smart', density: 'compact' });
+  });
+
+  it('rebases a progress change over an independent remote dashboard change after a conflict', async () => {
+    const initial = serverPreferences();
+    const remoteWorkspace = {
+      ...initial.workspace,
+      dashboard: { ...initial.workspace.dashboard, searchQuery: 'device-a' }
+    };
+    const remote = preferencesFromWorkspace(remoteWorkspace, 2);
+    fetchUserPreferences.mockResolvedValue(initial);
+    saveUserPreferences.mockRejectedValueOnce(Object.assign(new Error('Preferences conflict'), {
+      name: 'PreferencesConflictError', current: remote
+    })).mockImplementationOnce(async (request) => preferencesFromWorkspace(request.workspace, 3));
+    const store = createThemeStore();
+
+    await store.initialize(true);
+    await store.setProgressPeriod('12w');
+
+    expect(saveUserPreferences).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      revision: 2,
+      workspace: expect.objectContaining({
+        dashboard: expect.objectContaining({ searchQuery: 'device-a' }),
+        progress: { period: '12w' }
+      })
+    }));
+    expect(get(store).workspace).toMatchObject({
+      dashboard: { searchQuery: 'device-a' }, progress: { period: '12w' }
+    });
   });
 });

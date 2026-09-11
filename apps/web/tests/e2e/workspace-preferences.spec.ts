@@ -236,27 +236,12 @@ test.describe('workspace preferences', () => {
       });
       expect(firstDeviceUpdate.status).toBe(200);
 
-      const rebasedConflict = await pageB.evaluate(async ({ workspace, revision }) => {
-        const staleResponse = await fetch('/api/auth/preferences', {
-          method: 'PUT',
-          body: JSON.stringify({ theme: 'matrix', timezone: 'Europe/Belgrade', workspace: {
-            ...workspace,
-            progress: { period: '12w' }
-          }, revision })
-        });
-        const current = await staleResponse.json() as { workspace: Workspace; revision: number };
-        const retryResponse = await fetch('/api/auth/preferences', {
-          method: 'PUT',
-          body: JSON.stringify({ theme: 'matrix', timezone: 'Europe/Belgrade', workspace: {
-            ...current.workspace,
-            progress: { period: '12w' }
-          }, revision: current.revision })
-        });
-        return { staleStatus: staleResponse.status, retryStatus: retryResponse.status };
-      }, { workspace: staleWorkspace, revision: staleRevision });
-      expect(rebasedConflict).toEqual({ staleStatus: 409, retryStatus: 200 });
-      expect(sharedUser.workspace.dashboard.searchQuery).toBe('device-a');
-      expect(sharedUser.workspace.progress.period).toBe('12w');
+      const conflictResponse = pageB.waitForResponse((response) => response.url().includes('/api/auth/preferences')
+        && response.request().method() === 'PUT' && response.status() === 409);
+      await pageB.getByRole('button', { name: '12 weeks' }).click();
+      await conflictResponse;
+      await expect.poll(() => sharedUser.workspace.dashboard.searchQuery).toBe('device-a');
+      await expect.poll(() => sharedUser.workspace.progress.period).toBe('12w');
 
       await pageOther.goto('/');
       await expect(pageOther).toHaveURL(/\/app\/dashboard$/);
