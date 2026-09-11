@@ -146,6 +146,39 @@ describe('themeStore dashboard preference persistence', () => {
     expect(get(secondLogin).dashboard).toMatchObject({ sort: 'smart', density: 'compact' });
   });
 
+});
+
+describe('themeStore preference sync recovery', () => {
+
+  it('does nothing when retrying without pending intent', async () => {
+    fetchUserPreferences.mockResolvedValue(serverPreferences());
+    const store = createThemeStore();
+
+    await store.initialize(true);
+    await store.retrySync();
+
+    expect(saveUserPreferences).not.toHaveBeenCalled();
+  });
+
+  it('retries retained intent repeatedly without losing optimistic workspace state', async () => {
+    fetchUserPreferences.mockResolvedValue(serverPreferences());
+    saveUserPreferences
+      .mockRejectedValueOnce(new Error('Temporary API failure'))
+      .mockImplementation(async (request) => preferencesFromWorkspace(request.workspace, (request.revision ?? 0) + 1));
+    const store = createThemeStore();
+
+    await store.initialize(true);
+    await store.setDashboardPreferences({ ...defaultPreferences, sort: 'smart' });
+    expect(get(store).dashboard.sort).toBe('smart');
+    expect(get(store).syncError).toBe('Temporary API failure');
+
+    await Promise.all([store.retrySync(), store.retrySync()]);
+
+    expect(saveUserPreferences).toHaveBeenCalledTimes(2);
+    expect(get(store).dashboard.sort).toBe('smart');
+    expect(get(store).syncError).toBeNull();
+  });
+
   it('retains a failed dashboard mutation when a later progress mutation succeeds', async () => {
     fetchUserPreferences.mockResolvedValue(serverPreferences());
     saveUserPreferences
@@ -228,6 +261,10 @@ describe('themeStore dashboard preference persistence', () => {
       })
     }));
   });
+
+});
+
+describe('themeStore conflict recovery', () => {
 
   it('rebases a progress change over an independent remote dashboard change after a conflict', async () => {
     const initial = serverPreferences();

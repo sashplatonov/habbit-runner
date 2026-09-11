@@ -79,12 +79,17 @@ function preferences(state: UserState): Record<string, unknown> {
   };
 }
 
-async function handlePreferenceUpdate(route: Route, state: UserState, ownedHabit: boolean): Promise<void> {
+async function handlePreferenceUpdate(route: Route, state: UserState, ownedHabit: boolean, failures: { remaining: number }): Promise<void> {
   const payload = JSON.parse(route.request().postData() ?? '{}') as {
     theme?: ThemeId;
     workspace?: Workspace;
     revision?: number;
   };
+  if (failures.remaining > 0 && payload.workspace?.dashboard.sort === 'smart') {
+    failures.remaining -= 1;
+    await json(route, { message: 'Temporary preference failure' }, 503);
+    return;
+  }
   if (payload.revision !== state.revision) {
     await json(route, preferences(state), 409);
     return;
@@ -100,7 +105,8 @@ async function handlePreferenceUpdate(route: Route, state: UserState, ownedHabit
   await json(route, preferences(state));
 }
 
-async function installBackend(context: BrowserContext, state: UserState, ownedHabit: boolean): Promise<void> {
+async function installBackend(context: BrowserContext, state: UserState, ownedHabit: boolean, preferenceFailures = 0): Promise<void> {
+  const failures = { remaining: preferenceFailures };
   await context.route(/\/api\/auth\//, async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
@@ -113,7 +119,7 @@ async function installBackend(context: BrowserContext, state: UserState, ownedHa
       return;
     }
     if (pathname.endsWith('/auth/preferences') && request.method() === 'PUT') {
-      await handlePreferenceUpdate(route, state, ownedHabit);
+      await handlePreferenceUpdate(route, state, ownedHabit, failures);
       return;
     }
     await route.continue();
@@ -155,6 +161,39 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
 }
 
 test.describe('workspace preferences', () => {
+  test('shows an accessible authenticated retry and clears it after confirmation', async ({ browser }) => {
+    const state = createUser('sync-retry-user', 'sync-retry@example.test');
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await installBackend(context, state, true, 1);
+    const page = await context.newPage();
+    await seedSession(page, state);
+    try {
+      await page.goto('/app/dashboard');
+      await expect(page.getByRole('button', { name: 'Add habit' }).first()).toBeVisible();
+      await page.getByRole('button', { name: /To do habits|All habits/ }).click();
+      await page.getByRole('button', { name: 'Toggle smart sort' }).click();
+
+      const retry = page.getByRole('button', { name: 'Retry preference synchronization' });
+      await expect(retry).toBeVisible();
+      await expect(retry.locator('xpath=..')).toHaveAttribute('role', 'status');
+      await expect(page.getByRole('button', { name: 'Toggle smart sort' })).toHaveAttribute('aria-pressed', 'true');
+      expect(await retry.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width >= 44 && rect.height >= 44;
+      })).toBe(true);
+
+      await retry.focus();
+      await retry.press('Enter');
+      await expect(retry).toBeHidden();
+      expect(state.workspace.dashboard.sort).toBe('smart');
+    } finally {
+      await context.close();
+    }
+  });
+
+});
+
+test.describe('workspace preference canonical state', () => {
   test('restores canonical state across isolated contexts, reloads, conflicts, ownership, and viewports', async ({ browser }, testInfo) => {
     test.skip(testInfo.project.name === 'telegram-webview', 'Telegram launch flow is covered by the Telegram-specific E2E suite.');
     const sharedUser = createUser('workspace-user', 'workspace@example.test'); const otherUser = createUser('other-user', 'other@example.test');

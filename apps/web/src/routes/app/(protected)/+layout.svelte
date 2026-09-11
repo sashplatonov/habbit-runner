@@ -122,6 +122,19 @@
   onRefresh={refreshHabits}
 >
   <AppRuntimeProvider {runtime}>
+    {#if $themeStore.isAuthenticated && $themeStore.syncError}
+      <div class="mx-4 mt-3 flex items-center gap-3 rounded-2xl border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger sm:mx-6" role="status" aria-live="polite">
+        <span class="min-w-0 flex-1">{$themeStore.syncError}</span>
+        <button
+          type="button"
+          class="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-danger/40 px-3 font-semibold text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60"
+          aria-label="Retry preference synchronization"
+          onclick={() => void themeStore.retrySync()}
+        >
+          Retry
+        </button>
+      </div>
+    {/if}
     <AppLayout
       theme={$themeStore.theme}
       onThemeChange={(id) => themeStore.setTheme(id)}

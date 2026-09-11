@@ -140,7 +140,7 @@ git commit -m "fix(workspace): retain pending preference mutations"
 
 ## UWS-RVW-003: Show preference-sync failures and provide accessible retry
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P1
 **Depends on:** UWS-RVW-002
 
