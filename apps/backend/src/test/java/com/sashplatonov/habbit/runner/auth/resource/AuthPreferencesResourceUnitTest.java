@@ -6,9 +6,11 @@ import com.sashplatonov.habbit.runner.auth.security.CurrentUser;
 import com.sashplatonov.habbit.runner.auth.security.CurrentUserContext;
 import com.sashplatonov.habbit.runner.auth.dto.UpdatePreferencesRequest;
 import com.sashplatonov.habbit.runner.support.TestHelpers;
+import jakarta.ws.rs.BadRequestException;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AuthPreferencesResourceUnitTest {
 
@@ -32,5 +34,22 @@ class AuthPreferencesResourceUnitTest {
         preferencesService.getUpdateResponse(),
         TestHelpers.entityOf(updated, UserPreferencesResponse.class));
     assertEquals("matrix", preferencesService.getLastRequestTheme());
+  }
+
+  @Test
+  void shouldExposeIncompleteCanonicalUpdatesAsBadRequest() {
+    var preferencesService = new ResourcePreferencesService();
+    preferencesService.setRejectIncompleteCanonicalUpdates(true);
+    var currentUserContext = new CurrentUserContext();
+    currentUserContext.setUser(new CurrentUser("user-1", "user@example.test"));
+    var resource = new AuthPreferencesResource(preferencesService, currentUserContext);
+
+    var withRevisionOnly = assertThrows(BadRequestException.class, () -> resource.updatePreferences(
+        new UpdatePreferencesRequest("matrix", null, null, null, 3L)));
+    var withWorkspaceOnly = assertThrows(BadRequestException.class, () -> resource.updatePreferences(
+        new UpdatePreferencesRequest("matrix", null, null, new com.sashplatonov.habbit.runner.auth.dto.UserWorkspacePreferences(), null)));
+
+    assertEquals(400, withRevisionOnly.getResponse().getStatus());
+    assertEquals(400, withWorkspaceOnly.getResponse().getStatus());
   }
 }

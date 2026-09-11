@@ -13,6 +13,7 @@ import com.sashplatonov.habbit.runner.model.UserEntity;
 import com.sashplatonov.habbit.runner.support.AuthenticatedApiTestSupport;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.NotAuthorizedException;
 import org.junit.jupiter.api.Test;
 
@@ -271,5 +272,32 @@ class AuthPersistenceCoverageTest extends AuthenticatedApiTestSupport {
         () -> preferencesService.updateUserPreferences(user.getId(),
             new UpdatePreferencesRequest("sakura", null, null, new UserWorkspacePreferences(), current.revision()))));
     assertEquals("matrix", inTransaction(() -> UserEntity.<UserEntity>findById(user.getId())).getTheme());
+  }
+
+  @Test
+  void shouldRejectIncompleteCanonicalUpdatesWithoutChangingStoredPreferences() throws Exception {
+    var user = inTransaction(() -> {
+      var entity = new UserEntity();
+      entity.setEmail(UUID.randomUUID() + "@example.test");
+      entity.setTheme("matrix");
+      entity.setTimezone("Europe/Berlin");
+      entity.persist();
+      return entity;
+    });
+    var current = inTransaction(() -> preferencesService.getUserPreferences(user.getId()));
+    var requestedWorkspace = new UserWorkspacePreferences();
+
+    assertThrows(BadRequestException.class, () -> inTransaction(() -> preferencesService.updateUserPreferences(
+        user.getId(), new UpdatePreferencesRequest("sakura", "America/New_York", null,
+            null, current.revision()))));
+    assertThrows(BadRequestException.class, () -> inTransaction(() -> preferencesService.updateUserPreferences(
+        user.getId(), new UpdatePreferencesRequest("sakura", "America/New_York", null,
+            requestedWorkspace, null))));
+
+    var unchanged = inTransaction(() -> preferencesService.getUserPreferences(user.getId()));
+    assertEquals("matrix", unchanged.theme());
+    assertEquals("Europe/Berlin", unchanged.timezone());
+    assertEquals(current.workspace(), unchanged.workspace());
+    assertEquals(current.revision(), unchanged.revision());
   }
 }

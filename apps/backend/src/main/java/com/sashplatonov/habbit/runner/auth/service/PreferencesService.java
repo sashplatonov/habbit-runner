@@ -47,7 +47,12 @@ public class PreferencesService {
 
   @Transactional
   public UserPreferencesResponse updateUserPreferences(String userId, UpdatePreferencesRequest request) {
-    if (request.workspace() != null || request.revision() != null) {
+    var hasWorkspace = request.workspace() != null;
+    var hasRevision = request.revision() != null;
+    if (hasWorkspace != hasRevision) {
+      throw new BadRequestException("Canonical workspace revision is required");
+    }
+    if (hasWorkspace) {
       return updateCanonical(userId, request);
     }
     var user = findUserByIdForUpdate(userId);
