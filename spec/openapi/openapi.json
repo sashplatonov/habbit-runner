@@ -205,6 +205,14 @@
           }
         }
       },
+      "DashboardDensity" : {
+        "type" : "string",
+        "enum" : [ "comfortable", "compact" ]
+      },
+      "DashboardFilter" : {
+        "type" : "string",
+        "enum" : [ "pending", "all", "done", "archived" ]
+      },
       "DashboardPreferences" : {
         "type" : "object",
         "properties" : {
@@ -233,6 +241,33 @@
               "type" : "integer",
               "format" : "int32"
             }
+          }
+        }
+      },
+      "DashboardSort" : {
+        "type" : "string",
+        "enum" : [ "custom", "smart" ]
+      },
+      "DashboardWorkspacePreferences" : {
+        "type" : "object",
+        "properties" : {
+          "filter" : {
+            "$ref" : "#/components/schemas/DashboardFilter"
+          },
+          "searchQuery" : {
+            "type" : "string"
+          },
+          "tags" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "sort" : {
+            "$ref" : "#/components/schemas/DashboardSort"
+          },
+          "density" : {
+            "$ref" : "#/components/schemas/DashboardDensity"
           }
         }
       },
@@ -562,6 +597,18 @@
           }
         }
       },
+      "ProgressPeriod" : {
+        "type" : "string",
+        "enum" : [ "1w", "4w", "12w" ]
+      },
+      "ProgressWorkspacePreferences" : {
+        "type" : "object",
+        "properties" : {
+          "period" : {
+            "$ref" : "#/components/schemas/ProgressPeriod"
+          }
+        }
+      },
       "PushSubscriptionEndpointRequest" : {
         "type" : "object",
         "required" : [ "endpoint" ],
@@ -645,11 +692,27 @@
           }
         }
       },
+      "ThemeId" : {
+        "type" : "string",
+        "enum" : [ "cloud", "peach", "mint", "lavender", "paper", "midnight", "graphite", "ember", "violet", "matrix", "arctic", "aurora", "dune", "lagoon", "sakura" ]
+      },
       "ThemeResponse" : {
         "type" : "object",
         "properties" : {
           "theme" : {
             "type" : "string"
+          }
+        }
+      },
+      "ThemeUsage" : {
+        "type" : "object",
+        "properties" : {
+          "theme" : {
+            "$ref" : "#/components/schemas/ThemeId"
+          },
+          "count" : {
+            "type" : "integer",
+            "format" : "int32"
           }
         }
       },
@@ -666,6 +729,13 @@
           },
           "dashboard" : {
             "$ref" : "#/components/schemas/DashboardPreferences"
+          },
+          "workspace" : {
+            "$ref" : "#/components/schemas/UserWorkspacePreferences"
+          },
+          "revision" : {
+            "type" : "integer",
+            "format" : "int64"
           }
         }
       },
@@ -690,6 +760,37 @@
           },
           "dashboard" : {
             "$ref" : "#/components/schemas/DashboardPreferences"
+          },
+          "workspace" : {
+            "$ref" : "#/components/schemas/UserWorkspacePreferences"
+          },
+          "revision" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
+      "UserWorkspacePreferences" : {
+        "type" : "object",
+        "properties" : {
+          "version" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "dashboard" : {
+            "$ref" : "#/components/schemas/DashboardWorkspacePreferences"
+          },
+          "progress" : {
+            "$ref" : "#/components/schemas/ProgressWorkspacePreferences"
+          },
+          "navigation" : {
+            "$ref" : "#/components/schemas/WorkspaceNavigation"
+          },
+          "themeUsage" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ThemeUsage"
+            }
           }
         }
       },
@@ -705,6 +806,21 @@
         "type" : "integer",
         "format" : "int32",
         "enum" : [ 1, 2, 3, 4, "last" ]
+      },
+      "WorkspaceNavigation" : {
+        "type" : "object",
+        "properties" : {
+          "screen" : {
+            "$ref" : "#/components/schemas/WorkspaceScreen"
+          },
+          "selectedHabitId" : {
+            "type" : "string"
+          }
+        }
+      },
+      "WorkspaceScreen" : {
+        "type" : "string",
+        "enum" : [ "dashboard", "progress", "account", "habit-detail" ]
       }
     }
   },
@@ -1000,6 +1116,16 @@
               "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "Workspace revision conflict",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserPreferencesResponse"
                 }
               }
             }
