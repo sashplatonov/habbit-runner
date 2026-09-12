@@ -5,6 +5,8 @@
 ## 📋 Table of Contents
 
 - [Current state](#current-state)
+- [Quality decision table](#quality-decision-table)
+- [Remote evidence](#remote-evidence)
 - [Renovate](#renovate)
 - [Security scanning](#security-scanning)
 
@@ -14,17 +16,20 @@
 
 The current checkout includes:
 - `.github/renovate.json`
-- `.github/workflows/quality.yml` with backend verify, PostgreSQL integration,
-  frontend verification, Trivy security scans, and a bounded Compose smoke job
+- `.github/workflows/quality.yml` (`CI - Main`), which dispatches the
+  incremental profile for `main` pushes and pull requests targeting `main`
+- `.github/workflows/release-quality.yml` (`CI - Release`), which dispatches
+  the full profile for `release` pushes and manual runs
+- `.github/workflows/quality-lanes.yml`, the single reusable implementation of
+  backend verify, PostgreSQL integration, frontend verification, Trivy security
+  scans, and the bounded Compose smoke job
 
 The current checkout now treats Trivy as an active CI gate rather than a manual-only check.
 
-The quality workflow first classifies changed paths. Frontend and shared-package changes run
-frontend checks; backend, migration, and OpenAPI changes run backend and PostgreSQL checks;
-security-sensitive application and workflow changes run Trivy. Compose smoke remains reserved
-for backend, runtime, Docker/Compose, CI-script, workflow, and OpenAPI changes. Documentation-only
-changes continue to be ignored by the workflow trigger. Workflow changes themselves select every
-dependent lane so the classifier cannot hide a broken gate.
+`CI - Main` is incremental after its trigger-level documentation ignores. `CI - Release` is
+full after its trigger-level documentation ignores. Both callers use the same authoritative
+changed-path classifier in `scripts/ci/classify-quality-paths.sh`; this document describes its
+policy but does not duplicate its matching expressions.
 
 All jobs keep the existing cancellation, timeout, Maven/npm caches, and three-day failure-artifact
 retention. Local checks validate the decision table, but actual GitHub-hosted minute savings must
@@ -58,9 +63,46 @@ seven scheduled non-frozen days since its latest successful completion. Frozen,
 negative, archived, and not-yet-due habits do not receive ice. This policy is
 shared by dashboard cards and compact rows.
 
-The path matrix above is the source of truth for CI lane selection. Local runs
-prove build and behavior only; GitHub Actions minute savings require fresh
-pushed workflow runs and their URLs/durations.
+The decision table below is the source of truth for the expected topology. Local
+runs prove build and behavior only; GitHub Actions minute savings require fresh
+pushed workflow runs and their URLs and durations.
+
+## Quality decision table <a name="quality-decision-table"></a>
+
+| Change or event | Automatic workflow | Selected profile and lanes |
+|---|---|---|
+| Markdown/docs-only, `LICENSE`, issue/PR templates, or `.DS_Store` | None | Trigger ignored; no hosted minutes |
+| Frontend or shared package | `CI - Main` | Incremental: frontend and security; backend, PostgreSQL, and smoke skipped |
+| Backend, migration, or OpenAPI | `CI - Main` | Incremental: backend, PostgreSQL integration, security, and smoke; frontend skipped |
+| Runtime, Docker/Compose, CI script, dependency manifest, or workflow/Renovate configuration | `CI - Main` | Incremental: all quality lanes selected by the safety boundary |
+| Any non-ignored `release` push or manual release dispatch | `CI - Release` | Full: backend, PostgreSQL integration, security, frontend, and smoke |
+
+In the incremental profile, backend verification and PostgreSQL integration are
+selected together only when the backend lane is selected. A release run always
+uses the full profile regardless of which runtime path changed. A single push
+cannot start both branch callers.
+
+## Remote evidence <a name="remote-evidence"></a>
+
+Local `actionlint` and shell checks prove workflow syntax and selection logic
+only. Remote GitHub Actions runs prove event queueing, job skips, runner
+duration, and the observed hosted-minute impact. Neither type of check proves
+Dokploy deployment; deployment evidence must be collected separately.
+
+The pre-refactor baseline is recorded here for comparison:
+
+| Baseline run | Workflow | SHA | Observed window | Job result summary |
+|---|---|---|---|---|
+| [34709717197](https://github.com/sashplatonov/habit-runner/actions/runs/34709717197) | `Quality` on `main` | `002ec7ff` | 17:56:48–18:07:16 UTC (10m 28s) | frontend, security, smoke passed; backend and PostgreSQL skipped |
+| [34707598194](https://github.com/sashplatonov/habit-runner/actions/runs/34707598194) | `Quality` on `release` | `002ec7ff` | 17:13:52–17:24:48 UTC (10m 56s) | frontend, security, smoke passed; backend and PostgreSQL skipped |
+
+Post-refactor samples are pending ordinary remote work: one frontend-only
+`CI - Main` run, one backend-only `CI - Main` run, and one full `CI - Release`
+run. The remote repository currently has no runs under those new workflow
+names, so no hosted-minute saving conclusion is claimed yet. Once available,
+record each URL, selected/skipped job results, and start/end timestamps here;
+any comparison is observed sample evidence, not a guaranteed future-minute
+total.
 
 [↑ Back to top](#top)
 

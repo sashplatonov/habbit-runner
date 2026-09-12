@@ -168,7 +168,7 @@ git commit -m "refactor(ci): separate main and release dispatchers"
 
 ## CICD-003: Publish the CI decision table and verify hosted-run savings
 
-**Status:** TODO
+**Status:** IN_PROGRESS
 **Priority:** P2
 **Depends on:** CICD-002
 
@@ -230,6 +230,28 @@ gh run list --repo sashplatonov/habbit-runner --workflow 'CI - Release' --limit 
 git add docs/operations/github-automation.md README.md
 git commit -m "docs(ci): record branch quality policy"
 ```
+
+### CHECKPOINT
+
+- completed: Replaced the obsolete single-workflow description, added the
+  decision table, and documented the local-versus-remote evidence boundary and
+  pre-refactor baseline runs.
+- remaining: Record one ordinary post-refactor frontend-only `CI - Main` run,
+  one backend-only `CI - Main` run, and one full `CI - Release` run with URLs,
+  selected/skipped jobs, and start/end durations; then compare them as observed
+  sample evidence.
+- changed files: `docs/operations/github-automation.md`,
+  `docs/ci-cd-efficiency-backlog.md`, `docs/.backlog-execution-state.md`.
+- verification: `gh run list` found no remote workflows named `CI - Main` or
+  `CI - Release`; baseline runs `34709717197` and `34707598194` are the old
+  `Quality` workflow on SHA `002ec7ff`. `git diff --check` passed.
+- confirmed blocker: the refactor commits are local (`release` is ahead of
+  `origin/release`); no post-refactor remote run exists. Do not fabricate a
+  duration or push solely to create synthetic evidence.
+- next exact action: after normal eligible changes are merged and the new
+  workflows run remotely, append their evidence, change this status to `DONE`,
+  update execution state, run the targeted checks, and commit the completed
+  item atomically.
 
 ## CICD-004: Verify the Dokploy release deployment contract
 
