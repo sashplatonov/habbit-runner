@@ -1,0 +1,266 @@
+name: Reusable Quality Lanes
+
+on:
+  workflow_call:
+    inputs:
+      profile:
+        description: Quality selection profile
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      security: ${{ steps.filter.outputs.security }}
+      smoke: ${{ steps.filter.outputs.smoke }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Select quality lanes
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: bash scripts/ci/classify-quality-paths.sh "${{ inputs.profile }}"
+
+  verify-backend:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: apps/backend/pom.xml
+
+      - name: Verify
+        run: ./mvnw -B -ntp verify
+
+      - name: Verify OpenAPI snapshot
+        run: |
+          ./mvnw -B -ntp package -DskipTests \
+            -Dquarkus.smallrye-openapi.store-schema-directory=../../spec/openapi
+          git -C ../.. diff --exit-code -- spec/openapi/openapi.yaml
+
+      - name: Upload SpotBugs reports
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: spotbugs-reports
+          path: |
+            apps/backend/target/spotbugs
+            apps/backend/target/spotbugs.xml
+            apps/backend/target/spotbugsXml.xml
+          if-no-files-found: ignore
+          retention-days: 3
+          compression-level: 9
+
+  verify-postgres-integration:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: apps/backend/pom.xml
+
+      - name: Verify PostgreSQL integration suite
+        run: ./mvnw -B -ntp verify -Ppostgres-it
+
+      - name: Upload PostgreSQL diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: postgres-integration-reports
+          path: |
+            apps/backend/target/surefire-reports
+            apps/backend/target/failsafe-reports
+            apps/backend/target/quarkus.log
+          if-no-files-found: ignore
+          retention-days: 3
+          compression-level: 9
+
+  security:
+    needs: changes
+    if: ${{ needs.changes.outputs.security == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Scan Git history for secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run backend security scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: apps/backend
+          scanners: vuln,secret,misconfig
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+          skip-dirs: target
+          cache-dir: ${{ runner.temp }}/.trivy-cache
+
+      - name: Run frontend security scan
+        if: ${{ !cancelled() }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: apps/web
+          scanners: vuln,secret,misconfig
+          ignore-unfixed: true
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+          skip-dirs: node_modules,dist,.svelte-kit,coverage,.vite
+          cache-dir: ${{ runner.temp }}/.trivy-cache
+          cache: 'false'
+
+  verify-frontend:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Verify frontend
+        env:
+          VITE_API_BASE_URL: /api
+        run: npm run check:web
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify frontend coverage
+        env:
+          PLAYWRIGHT_SKIP_BUILD: '1'
+        run: npm run test:coverage
+
+      - name: Verify frontend browser journeys
+        env:
+          PLAYWRIGHT_SKIP_BUILD: '1'
+        run: npm run test:e2e
+
+      - name: Upload frontend browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-e2e-reports
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
+          compression-level: 9
+
+  smoke-stack:
+    needs:
+      - changes
+      - verify-backend
+      - verify-postgres-integration
+      - verify-frontend
+    if: >-
+      ${{ always() &&
+      (needs.verify-backend.result == 'success' || needs.verify-backend.result == 'skipped') &&
+      (needs.verify-postgres-integration.result == 'success' || needs.verify-postgres-integration.result == 'skipped') &&
+      (needs.verify-frontend.result == 'success' || needs.verify-frontend.result == 'skipped') &&
+      needs.changes.outputs.smoke == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.12.0'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Docker and contract smoke checks
+        run: ./scripts/ci/smoke-stack.sh
+
+      - name: Run authenticated browser-to-database contract
+        run: ./scripts/ci/run-stack-e2e.sh
+
+      - name: Upload smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: compose-smoke-logs
+          path: /tmp/habbit-runner-smoke-logs
+          if-no-files-found: ignore
+          retention-days: 3
+          compression-level: 9
