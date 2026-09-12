@@ -205,6 +205,31 @@ describe('themeStore preference sync recovery', () => {
     });
   });
 
+  it('builds queued writes from the latest confirmed revision', async () => {
+    fetchUserPreferences.mockResolvedValue(serverPreferences());
+    let releaseFirstSave: ((value: UserPreferences) => void) | undefined;
+    saveUserPreferences
+      .mockReturnValueOnce(new Promise((resolve) => { releaseFirstSave = resolve; }))
+      .mockImplementation(async (request) => preferencesFromWorkspace(request.workspace, (request.revision ?? 0) + 1));
+    const store = createThemeStore();
+
+    await store.initialize(true);
+    const first = store.setProgressPeriod('12w');
+    await vi.waitFor(() => expect(saveUserPreferences).toHaveBeenCalledTimes(1));
+    const second = store.setDashboardPreferences({ ...defaultPreferences, sort: 'smart' });
+    const firstRequest = saveUserPreferences.mock.calls[0][0];
+    releaseFirstSave?.(preferencesFromWorkspace(firstRequest.workspace, (firstRequest.revision ?? 0) + 1));
+    await Promise.all([first, second]);
+
+    expect(saveUserPreferences).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      revision: 2,
+      workspace: expect.objectContaining({
+        dashboard: expect.objectContaining({ sort: 'smart' }),
+        progress: { period: '12w' }
+      })
+    }));
+  });
+
   it('rebases every pending mutation after a conflict and retains remote sections', async () => {
     const initial = serverPreferences();
     const remoteWorkspace = {

@@ -175,8 +175,8 @@ async function retryConflict(
     persistPendingWorkspaceMutation(currentUserId(), pending);
     const retry = await preferencesApi.saveUserPreferences(
       requestFor(conflict.current, pending.mutations, conflict.current.revision));
-    context.removeMutations(sent);
     context.setConfirmed(retry);
+    context.removeMutations(sent);
   } catch (retryError) {
     const rebased = { ...pending, revision: conflict.current.revision };
     context.setPending(rebased);
@@ -192,8 +192,7 @@ async function writePending(context: PreferenceSynchronizerContext): Promise<voi
   const sent = context.pending.mutations;
   try {
     const saved = await preferencesApi.saveUserPreferences(
-      requestFor(context.confirmed, sent, context.pending.revision));
-    context.removeMutations(sent);
+      requestFor(context.confirmed, sent, context.confirmed.revision));
     context.setConfirmed(saved);
   } catch (error) {
     if (isPreferencesConflict(error)) {
@@ -364,10 +363,16 @@ function createPreferenceSynchronizer(store: Writable<ThemeStoreSnapshot>) {
   }
 
   function enqueue(): Promise<void> {
-    const context: PreferenceSynchronizerContext = {
-      store, confirmed, pending, setConfirmed, setPending: (value) => { pending = value; }, removeMutations
-    };
-    queue = queue.catch(() => undefined).then(() => writePending(context));
+    queue = queue.catch(() => undefined).then(() => {
+      return writePending({
+        store,
+        confirmed,
+        pending,
+        setConfirmed,
+        setPending: (value) => { pending = value; },
+        removeMutations
+      });
+    });
     return queue;
   }
 
