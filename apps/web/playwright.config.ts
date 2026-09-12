@@ -29,10 +29,12 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: 'VITE_API_BASE_URL=/api npm run build && npm run preview -- --host 0.0.0.0 --port 4173',
-        url: 'http://127.0.0.1:4173',
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000
+      command: process.env.PLAYWRIGHT_SKIP_BUILD === '1'
+        ? 'npm run preview -- --host 0.0.0.0 --port 4173'
+        : 'VITE_API_BASE_URL=/api npm run build && npm run preview -- --host 0.0.0.0 --port 4173',
+      url: 'http://127.0.0.1:4173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000
       },
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? 'test-results'
 });

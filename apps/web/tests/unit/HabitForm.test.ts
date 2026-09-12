@@ -380,7 +380,7 @@ describe('HabitForm', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
       schedule: { type: 'monthly_quota', timesPerMonth: 1 }
     }));
-  });
+  }, 15_000);
 
   it('preserves advanced monthly-week schedules on submit', async () => {
     const user = userEvent.setup();

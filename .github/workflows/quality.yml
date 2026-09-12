@@ -233,29 +233,11 @@ jobs:
 
       - name: Verify frontend coverage and browser journeys
         env:
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+          PLAYWRIGHT_SKIP_BUILD: '1'
         run: |
           set -Eeuo pipefail
-          preview_log="$RUNNER_TEMP/habbit-runner-preview.log"
           coverage_log="$RUNNER_TEMP/habbit-runner-coverage.log"
           e2e_log="$RUNNER_TEMP/habbit-runner-e2e.log"
-
-          npm run preview -- --host 127.0.0.1 --port 4173 > "$preview_log" 2>&1 &
-          preview_pid=$!
-          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
-
-          ready=false
-          for _ in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
-              ready=true
-              break
-            fi
-            sleep 1
-          done
-          if [[ "$ready" != true ]]; then
-            cat "$preview_log"
-            exit 1
-          fi
 
           npm run test:coverage > "$coverage_log" 2>&1 &
           coverage_pid=$!
