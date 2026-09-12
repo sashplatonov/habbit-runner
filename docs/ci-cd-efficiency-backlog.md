@@ -100,7 +100,7 @@ git commit -m "refactor(ci): extract reusable quality lanes"
 
 ## CICD-002: Split branch dispatchers and restore safe trigger ignores
 
-**Status:** TODO
+**Status:** DONE
 **Priority:** P1
 **Depends on:** CICD-001
 

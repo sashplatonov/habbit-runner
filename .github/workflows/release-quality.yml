@@ -1,19 +1,9 @@
-name: CI - Main
+name: CI - Release
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - docs/**
-      - '**/*.md'
-      - LICENSE
-      - .github/ISSUE_TEMPLATE/**
-      - .github/PULL_REQUEST_TEMPLATE.md
-      - '**/.DS_Store'
   push:
     branches:
-      - main
+      - release
     paths-ignore:
       - docs/**
       - '**/*.md'
@@ -21,6 +11,7 @@ on:
       - .github/ISSUE_TEMPLATE/**
       - .github/PULL_REQUEST_TEMPLATE.md
       - '**/.DS_Store'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,4 +24,4 @@ jobs:
   quality:
     uses: ./.github/workflows/quality-lanes.yml
     with:
-      profile: incremental
+      profile: full
