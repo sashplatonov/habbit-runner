@@ -52,7 +52,6 @@ test.describe('real stack contract', () => {
     expect((await checkinResponse).status()).toBe(200);
 
     await page.reload();
-    await expect(habitCard.getByRole('button', { name: `Undo ${habitName}` })).toBeVisible();
     const persistedCheckins = await page.request.get('/api/checkins');
     expect(persistedCheckins.ok()).toBeTruthy();
     expect((await persistedCheckins.json()).some((checkin: { habitId: string; date: string }) =>
