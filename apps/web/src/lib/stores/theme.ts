@@ -194,6 +194,7 @@ async function writePending(context: PreferenceSynchronizerContext): Promise<voi
     const saved = await preferencesApi.saveUserPreferences(
       requestFor(context.confirmed, sent, context.confirmed.revision));
     context.setConfirmed(saved);
+    context.removeMutations(sent);
   } catch (error) {
     if (isPreferencesConflict(error)) {
       await retryConflict(context, error, sent);
