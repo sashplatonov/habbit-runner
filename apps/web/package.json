@@ -91,6 +91,7 @@
     "workbox-precaching": "^7.4.1"
   },
   "overrides": {
+    "js-yaml": "^3.15.2",
     "@nestjs/common": "^11.1.16",
     "@nestjs/core": "^11.1.16",
     "@hono/node-server": "^1.19.10",

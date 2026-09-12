@@ -52,6 +52,7 @@ async function json(route: Route, body: unknown, status = 200): Promise<void> {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 async function mockBackend(page: Page, habits: readonly Record<string, unknown>[] = [habit, secondHabit], initialCheckins: unknown[] = []): Promise<void> {
+  let currentHabits = [...habits];
   const checkins = new Map(
     initialCheckins.map((checkin) => {
       const value = checkin as { habitId: string; date: string };
@@ -76,13 +77,19 @@ async function mockBackend(page: Page, habits: readonly Record<string, unknown>[
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (pathname.endsWith('/habits') && request.method() === 'GET') {
-      await json(route, habits);
+      await json(route, currentHabits);
     } else if (pathname.endsWith('/habits') && request.method() === 'POST') {
       const payload = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
-      await json(route, { ...habit, ...payload, id: 'e2e-created', name: payload['name'] ?? habit.name });
+      const created = { ...habit, ...payload, id: 'e2e-created', name: payload['name'] ?? habit.name };
+      currentHabits = [...currentHabits.filter((value) => value.id !== created.id), created];
+      await json(route, created);
     } else if (pathname.includes('/habits/') && request.method() === 'PUT') {
-      await json(route, { ...habit, id: 'e2e-created', name: 'Read for twenty minutes', version: 2 });
+      const updated = { ...habit, id: 'e2e-created', name: 'Read for twenty minutes', version: 2 };
+      currentHabits = [...currentHabits.filter((value) => value.id !== updated.id), updated];
+      await json(route, updated);
     } else if (pathname.includes('/habits/') && request.method() === 'DELETE') {
+      const habitId = decodeURIComponent(pathname.split('/').at(-1) ?? '');
+      currentHabits = currentHabits.filter((value) => value.id !== habitId);
       await route.fulfill({ status: 204 });
     } else {
       await route.continue();
@@ -126,10 +133,23 @@ async function seedSession(page: Page): Promise<void> {
   });
 }
 async function openHabitDetails(page: Page): Promise<void> {
-  if (await page.getByRole('button', { name: 'Edit habit' }).isVisible()) {
+  const editButton = page.getByRole('button', { name: 'Edit habit' });
+  const habitCard = page.getByRole('article', { name: /⚡ Read for ten minutes/ }).getByRole('button').filter({ hasText: 'Read for ten minutes' });
+  await expect.poll(async () => {
+    if (await editButton.isVisible()) {
+      return 'detail';
+    }
+    if (await habitCard.isVisible()) {
+      return 'dashboard';
+    }
+    return 'loading';
+  }, { timeout: 10_000 }).toMatch(/detail|dashboard/);
+  if (await editButton.isVisible()) {
     return;
   }
-  await page.getByRole('article', { name: /Read for ten minutes/ }).getByRole('button').filter({ hasText: 'Read for ten minutes' }).click();
+  await habitCard.click();
+  await expect(page).toHaveURL(/\/app\/habit\/[^/]+$/);
+  await expect(editButton).toBeVisible();
 }
 async function openHabitIdentity(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Edit Identity' }).click();

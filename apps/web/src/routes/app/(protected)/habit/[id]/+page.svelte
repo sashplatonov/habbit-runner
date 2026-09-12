@@ -40,6 +40,8 @@
   let mutationError = $state<string | null>(null);
   let navigationFallbackStarted = $state(false);
   let navigationRecorded = $state(false);
+  let habitResolutionRetryScheduled = $state(false);
+  let habitResolutionRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
   const todayKey = $derived($habitsStore.formatDate(referenceDate));
   const todayFreezeKey = $derived(completionKeyToCalendarDate(todayKey));
@@ -72,7 +74,13 @@
     if (habit && !navigationRecorded) {
       navigationRecorded = true;
       void themeStore.setNavigation('habit-detail', habit.id);
-    } else if (!navigationFallbackStarted) {
+    } else if (!habit && !habitResolutionRetryScheduled) {
+      habitResolutionRetryScheduled = true;
+      habitResolutionRetryTimer = setTimeout(() => {
+        habitResolutionRetryScheduled = false;
+        habitResolutionRetryTimer = undefined;
+      }, 0);
+    } else if (!habit && !navigationFallbackStarted) {
       navigationFallbackStarted = true;
       void themeStore.setNavigation('dashboard');
       void goto(resolve(appResolve('/app/(protected)/dashboard', {}), {}), { replaceState: true });
@@ -95,6 +103,9 @@
   onDestroy(() => {
     celebrationTimerIds.forEach((timerId) => clearTimeout(timerId));
     celebrationTimerIds = [];
+    if (habitResolutionRetryTimer) {
+      clearTimeout(habitResolutionRetryTimer);
+    }
   });
 
   async function getDetailConfetti() {
