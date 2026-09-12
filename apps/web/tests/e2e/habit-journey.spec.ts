@@ -134,7 +134,7 @@ async function seedSession(page: Page): Promise<void> {
 }
 async function openHabitDetails(page: Page): Promise<void> {
   const editButton = page.getByRole('button', { name: 'Edit habit' });
-  const habitCard = page.getByRole('article', { name: /⚡ Read for ten minutes/ }).getByRole('button').filter({ hasText: 'Read for ten minutes' });
+  const habitCard = page.getByRole('article', { name: /Read for ten minutes/ }).getByRole('button').filter({ hasText: 'Read for ten minutes' }).first();
   await expect.poll(async () => {
     if (await editButton.isVisible()) {
       return 'detail';
