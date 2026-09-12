@@ -195,7 +195,7 @@ test.describe('workspace preferences', () => {
 
 test.describe('workspace preference canonical state', () => {
   test('restores canonical state across isolated contexts, reloads, conflicts, ownership, and viewports', async ({ browser }, testInfo) => {
-    test.skip(testInfo.project.name === 'telegram-webview', 'Telegram launch flow is covered by the Telegram-specific E2E suite.');
+    test.skip(testInfo.project.name !== 'desktop', 'This test creates explicit desktop and compact-mobile contexts.');
     const sharedUser = createUser('workspace-user', 'workspace@example.test'); const otherUser = createUser('other-user', 'other@example.test');
     const contextA = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const contextB = await browser.newContext({ viewport: { width: 1280, height: 900 } });
