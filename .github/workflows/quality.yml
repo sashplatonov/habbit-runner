@@ -66,7 +66,7 @@ jobs:
           if has_path '^(apps/backend/|spec/openapi/|\.github/workflows/|\.github/renovate\.json)'; then backend=true; fi
           if has_path '^(apps/web/|apps/web/packages/shared/|\.github/workflows/|\.github/renovate\.json)'; then frontend=true; fi
           if has_path '^(apps/(backend|web)/|docker-compose|apps/.*/Dockerfile|\.github/|package-lock\.json|pom\.xml|scripts/ci/)'; then security=true; fi
-          if has_path '^(apps/backend/|apps/web/Dockerfile|docker-compose|scripts/ci/|\.github/workflows/|spec/openapi/)'; then smoke=true; fi
+          if has_path '^(apps/backend/|apps/web/(Dockerfile|tests/e2e/stack-contract\.spec\.ts)|docker-compose|scripts/ci/|\.github/workflows/|spec/openapi/)'; then smoke=true; fi
 
           {
             echo "backend=$backend"
