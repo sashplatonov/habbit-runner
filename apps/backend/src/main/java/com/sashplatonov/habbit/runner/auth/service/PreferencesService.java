@@ -51,58 +51,48 @@ public class PreferencesService {
 
   @Transactional
   public UserPreferencesResponse updateUserPreferences(String userId, UpdatePreferencesRequest request) {
-    var hasWorkspace = request.workspace() != null;
-    var hasRevision = request.revision() != null;
-    if (hasWorkspace != hasRevision) {
-      throw new BadRequestException("Canonical workspace revision is required");
-    }
-    if (hasWorkspace) {
+    PreferencesUpdateSupport.requireCanonicalWorkspaceAndRevisionTogether(request);
+    if (request.workspace() != null) {
       return updateCanonical(userId, request);
     }
     var user = findUserByIdForUpdate(userId);
-    if (user == null) {
-      throw new NotAuthorizedException("User no longer exists");
-    }
+    PreferencesUpdateSupport.requireExistingUser(user);
     var workspace = clearMissingSelectedHabit(userId, readOrMigrate(user));
-    var previousTheme = ThemeCatalog.normalize(user.getTheme());
-    var previousTimezone = user.getTimezone();
-    if (request.dashboard() != null) {
-      workspace = WorkspacePreferencesNormalizer.normalize(codec.fromLegacy(request.dashboard()));
-    }
-    user.setTheme(ThemeCatalog.normalize(request.theme()));
-    if (request.timezone() != null) {
-      user.setTimezone(request.timezone().isBlank() ? null : request.timezone());
-    }
-    user.setWorkspacePreferences(codec.write(workspace));
-    user.setWorkspacePreferencesRevision(nextRevision(user));
-    log.info("User preferences updated: userId={}, themeChanged={}, timezoneChanged={}", user.getId(),
-        !Objects.equals(previousTheme, user.getTheme()), !Objects.equals(previousTimezone, user.getTimezone()));
+    workspace = updateLegacyPreferences(user, request, workspace);
     return response(user, workspace);
   }
 
   private UserPreferencesResponse updateCanonical(String userId, UpdatePreferencesRequest request) {
     var user = findUserByIdForUpdate(userId);
-    if (user == null) {
-      throw new NotAuthorizedException("User no longer exists");
-    }
-    if (request.revision() == null || request.revision() < 0) {
-      throw new BadRequestException("Canonical workspace revision is required");
-    }
+    PreferencesUpdateSupport.requireExistingUser(user);
+    PreferencesUpdateSupport.requireValidRevision(request.revision());
     var currentWorkspace = clearMissingSelectedHabit(userId, readOrMigrate(user));
-    if (!Objects.equals(request.revision(), user.getWorkspacePreferencesRevision())) {
-      throw new WorkspacePreferencesConflictException(response(user, currentWorkspace));
-    }
+    requireCurrentRevision(request.revision(), user, currentWorkspace);
     var workspace = WorkspacePreferencesNormalizer.normalize(request.workspace());
     validateSelectedHabit(userId, workspace);
-    user.setWorkspacePreferences(codec.write(workspace));
-    user.setWorkspacePreferencesRevision(nextRevision(user));
-    if (request.theme() != null) {
-      user.setTheme(ThemeCatalog.normalize(request.theme()));
-    }
-    if (request.timezone() != null) {
-      user.setTimezone(request.timezone().isBlank() ? null : request.timezone());
-    }
+    PreferencesUpdateSupport.persistWorkspace(user, workspace, codec);
+    PreferencesUpdateSupport.updateOptionalProfilePreferences(user, request);
     return response(user, workspace);
+  }
+
+  private UserWorkspacePreferences updateLegacyPreferences(UserEntity user, UpdatePreferencesRequest request,
+                                                           UserWorkspacePreferences workspace) {
+    var updatedWorkspace = request.dashboard() == null ? workspace
+        : WorkspacePreferencesNormalizer.normalize(codec.fromLegacy(request.dashboard()));
+    var previousTheme = ThemeCatalog.normalize(user.getTheme());
+    var previousTimezone = user.getTimezone();
+    user.setTheme(ThemeCatalog.normalize(request.theme()));
+    PreferencesUpdateSupport.updateTimezoneIfPresent(user, request.timezone());
+    PreferencesUpdateSupport.persistWorkspace(user, updatedWorkspace, codec);
+    log.info("User preferences updated: userId={}, themeChanged={}, timezoneChanged={}", user.getId(),
+        !Objects.equals(previousTheme, user.getTheme()), !Objects.equals(previousTimezone, user.getTimezone()));
+    return updatedWorkspace;
+  }
+
+  private void requireCurrentRevision(Long revision, UserEntity user, UserWorkspacePreferences workspace) {
+    if (!Objects.equals(revision, user.getWorkspacePreferencesRevision())) {
+      throw new WorkspacePreferencesConflictException(response(user, workspace));
+    }
   }
 
   private UserWorkspacePreferences readOrMigrate(UserEntity user) {

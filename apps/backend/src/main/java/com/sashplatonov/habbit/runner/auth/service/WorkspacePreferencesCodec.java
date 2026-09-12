@@ -32,24 +32,40 @@ public class WorkspacePreferencesCodec {
   }
 
   private void validate(JsonNode root) {
+    validateVersion(root);
+    validateDashboard(root.get("dashboard"));
+    validateProgress(root.get("progress"));
+    validateNavigation(root.get("navigation"));
+    validateThemeUsage(root.get("themeUsage"));
+  }
+
+  private void validateVersion(JsonNode root) {
     if (root.has("version") && root.get("version").asInt() != 1) {
       throw new IllegalArgumentException("Unsupported workspace version");
     }
-    var dashboard = root.get("dashboard");
+  }
+
+  private void validateDashboard(JsonNode dashboard) {
     if (dashboard != null) {
       check(dashboard, "filter", "pending", "all", "done", "archived");
       check(dashboard, "sort", "custom", "smart");
       check(dashboard, "density", "comfortable", "compact");
     }
-    var progress = root.get("progress");
+  }
+
+  private void validateProgress(JsonNode progress) {
     if (progress != null) {
       check(progress, "period", "1w", "4w", "12w");
     }
-    var navigation = root.get("navigation");
+  }
+
+  private void validateNavigation(JsonNode navigation) {
     if (navigation != null) {
       check(navigation, "screen", "dashboard", "progress", "account", "habit-detail");
     }
-    var usage = root.get("themeUsage");
+  }
+
+  private void validateThemeUsage(JsonNode usage) {
     if (usage != null && usage.isArray()) {
       for (var entry : usage) {
         check(entry, "theme", "cloud", "peach", "mint", "lavender", "paper", "midnight",
@@ -94,7 +110,7 @@ public class WorkspacePreferencesCodec {
       dashboard.themeUsage().forEach((theme, count) -> {
         try {
           usage.add(new ThemeUsage(ThemeId.fromWireValue(theme), count));
-        } catch (RuntimeException ignored) {
+        } catch (IllegalArgumentException ignored) {
           // Invalid legacy theme usage is discarded during migration.
         }
       });
