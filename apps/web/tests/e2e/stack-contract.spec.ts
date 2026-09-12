@@ -58,7 +58,7 @@ test.describe('real stack contract', () => {
       checkin.habitId === createdHabit.id && checkin.date === today
     )).toBeTruthy();
 
-    await habitCard.getByRole('button', { name: new RegExp(`${habitName},`) }).click();
+    await page.getByRole('button', { name: new RegExp(`${habitName},`) }).click();
     await expect(page.getByRole('button', { name: 'Edit habit' })).toBeVisible();
     await page.getByRole('button', { name: 'Edit habit' }).click();
 
