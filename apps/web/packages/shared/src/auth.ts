@@ -94,8 +94,6 @@ const THEME_IDS: ReadonlySet<ThemeId> = new Set([
   'violet', 'matrix', 'arctic', 'aurora', 'dune', 'lagoon', 'sakura'
 ]);
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 function isObject(value: unknown): value is { [key: string]: unknown } {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -138,7 +136,7 @@ function normalizeWorkspaceScreen(value: unknown): WorkspaceScreen {
 function normalizeWorkspaceNavigation(value: { [key: string]: unknown }): WorkspaceNavigation {
   const screen = normalizeWorkspaceScreen(value.screen);
   const selectedHabitId = screen === 'habit-detail' && typeof value.selectedHabitId === 'string'
-    && UUID_PATTERN.test(value.selectedHabitId) ? value.selectedHabitId : null;
+    && value.selectedHabitId.trim().length > 0 ? value.selectedHabitId : null;
   return { screen: screen === 'habit-detail' && selectedHabitId === null ? 'dashboard' : screen, selectedHabitId };
 }
 

@@ -23,22 +23,23 @@ describe('dashboard preferences', () => {
     expect(normalizeUserWorkspacePreferences({
       dashboard: { filter: 'invalid', searchQuery: '  focus  ', tags: ['work', 'work'] },
       progress: { period: '12w' },
-      navigation: { screen: 'habit-detail', selectedHabitId: 'not-a-uuid' },
+      navigation: { screen: 'habit-detail', selectedHabitId: 'read-for-ten-minutes-ab12' },
       themeUsage: [{ theme: 'cloud', count: 3 }, { theme: 'cloud', count: 8 }, { theme: 'broken', count: 2 }]
     })).toEqual({
       ...DEFAULT_WORKSPACE_PREFERENCES,
       dashboard: { ...DEFAULT_WORKSPACE_PREFERENCES.dashboard, searchQuery: 'focus', tags: ['work'] },
       progress: { period: '12w' },
+      navigation: { screen: 'habit-detail', selectedHabitId: 'read-for-ten-minutes-ab12' },
       themeUsage: [{ theme: 'cloud', count: 3 }]
     });
   });
 
-  it('restores a selected habit only for a valid habit-detail UUID', () => {
+  it('restores a selected habit for a non-blank habit-detail ID', () => {
     const normalized = normalizeUserWorkspacePreferences({
-      navigation: { screen: 'habit-detail', selectedHabitId: '550e8400-e29b-41d4-a716-446655440000' }
+      navigation: { screen: 'habit-detail', selectedHabitId: 'read-for-ten-minutes-ab12' }
     });
     expect(normalized.navigation).toEqual({
-      screen: 'habit-detail', selectedHabitId: '550e8400-e29b-41d4-a716-446655440000'
+      screen: 'habit-detail', selectedHabitId: 'read-for-ten-minutes-ab12'
     });
   });
 
