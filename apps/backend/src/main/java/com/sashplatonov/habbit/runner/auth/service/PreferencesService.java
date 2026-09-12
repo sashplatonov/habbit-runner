@@ -25,11 +25,12 @@ public class PreferencesService {
   private final WorkspacePreferencesCodec codec;
 
   public PreferencesService() { this(null, null, new WorkspacePreferencesCodec()); }
+
   public PreferencesService(UserRepository userRepository) { this(userRepository, null, new WorkspacePreferencesCodec()); }
 
   @jakarta.inject.Inject
-  public PreferencesService(UserRepository userRepository, HabitRepository habitRepository,
-                             WorkspacePreferencesCodec codec) {
+  PreferencesService(UserRepository userRepository, HabitRepository habitRepository,
+                     WorkspacePreferencesCodec codec) {
     this.userRepository = userRepository;
     this.habitRepository = habitRepository;
     this.codec = codec;

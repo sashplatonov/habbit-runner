@@ -10,10 +10,10 @@ public record UserWorkspacePreferences(
     DashboardWorkspacePreferences dashboard,
     ProgressWorkspacePreferences progress,
     WorkspaceNavigation navigation,
-    List<ThemeUsage> themeUsage
+  List<ThemeUsage> themeUsage
 ) {
   public UserWorkspacePreferences {
-    version = version == null ? 1 : version;
+    version = defaultVersion(version);
     dashboard = dashboard == null ? new DashboardWorkspacePreferences() : dashboard;
     progress = progress == null ? new ProgressWorkspacePreferences() : progress;
     navigation = navigation == null ? new WorkspaceNavigation() : navigation;
@@ -27,5 +27,9 @@ public record UserWorkspacePreferences(
 
   public UserWorkspacePreferences() {
     this(1, new DashboardWorkspacePreferences(), new ProgressWorkspacePreferences(), new WorkspaceNavigation(), List.of());
+  }
+
+  private static Integer defaultVersion(Integer version) {
+    return version == null ? Integer.valueOf(1) : version;
   }
 }
