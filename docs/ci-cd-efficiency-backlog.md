@@ -255,7 +255,7 @@ git commit -m "docs(ci): record branch quality policy"
 
 ## CICD-004: Verify the Dokploy release deployment contract
 
-**Status:** TODO
+**Status:** IN_PROGRESS
 **Priority:** P1
 **Depends on:** CICD-003
 
@@ -314,3 +314,30 @@ curl -fsS -o /dev/null -w 'deployed ready HTTP %{http_code}\n' https://<configur
 git add docs/setup/getting-started.md docs/operations/reliability-rollout.md
 git commit -m "docs(deploy): verify release deployment policy"
 ```
+
+### CHECKPOINT
+
+- completed: Pushed the eligible `release` change at `36b0ed22`; the fresh
+  `CI - Release` run `34738888619` completed successfully from
+  `2026-09-13T04:51:46Z` through `2026-09-13T05:02:14Z`, including all full
+  quality lanes and `smoke-stack`. The configured public readiness endpoint
+  returned HTTP 200 without exposing its response body. The checked-in
+  `.dokploy/state.yml` remains untouched and its `main` branch value remains
+  non-authoritative evidence.
+- remaining: Confirm the live Dokploy Compose application's `release` source,
+  inspect the fresh Dokploy rollout status/logs, and record its external
+  rollout identifier/URL separately from the GitHub Actions URL before updating
+  the two deployment documents and marking this item `DONE`.
+- changed files: `docs/ci-cd-efficiency-backlog.md` (checkpoint only; no product
+  or deployment-document changes were made).
+- verification: `docker compose -f docker-compose.dokploy.yml config --quiet`
+  passed; `curl -fsS -o /dev/null -w 'deployed ready HTTP %{http_code}\n'
+  https://habit-runner.freeddns.org/api/q/health/ready` returned HTTP 200;
+  GitHub run `34738888619` concluded `success`.
+- confirmed blocker: Dokploy UI/API access is unavailable in this session
+  (`Computer Use permissions are not granted`), so the live source, rollout
+  logs, and external rollout identifier cannot be verified without fabricating
+  evidence.
+- next exact action: provide an authorized Dokploy UI/API session or the
+  redacted rollout ID/URL and logs; then complete the two document updates,
+  rerun the targeted checks, and commit the item atomically.
